@@ -3,3 +3,20 @@ backend/.venv/
 __pycache__/
 *.pyc
 .env
+# Python
+__pycache__/
+*.pyc
+
+# Local environment / IDE
+.vscode/
+.venv/
+
+# Downloaded weather data
+data/raw/gfs/
+data/raw/gefs/
+
+# Local/debug files
+check_gfs_files.py
+inspect_gfs.py
+gfs_directory.html
+test_gfs.py
