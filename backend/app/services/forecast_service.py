@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, Literal
+from typing import Dict
 
 from app.services.blending_service import get_model_weights
+from app.services.gfs_forecast_service import generate_real_gfs_forecast
 from app.services.regime_service import classify_regime
 
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
@@ -30,18 +31,7 @@ def generate_forecast(lat: float, lon: float, lead_hours: int, variable: str) ->
     regime = classify_regime(lat, lon, lead_hours)
     extremes = generate_extremes(lat, lon, lead_hours)
 
-    forecast = {
-        "temperature": 29.2,
-        "rainfall": 17.5,
-        "wind_speed": 18.7,
-    }
-
-    if variable == "temperature":
-        forecast["temperature"] = round(max(0.0, 29.2 + (lat / 30.0)), 1)
-    elif variable == "rainfall":
-        forecast["rainfall"] = round(max(0.0, 17.5 + (lead_hours / 10.0)), 1)
-    elif variable == "wind_speed":
-        forecast["wind_speed"] = round(max(0.0, 18.7 + (lon / 100.0)), 1)
+    gfs_forecast = generate_real_gfs_forecast(lat=lat, lon=lon, lead_hours=lead_hours, variable=variable)
 
     return {
         "location": {
@@ -50,7 +40,11 @@ def generate_forecast(lat: float, lon: float, lead_hours: int, variable: str) ->
             "lon": lon,
         },
         "lead_hours": lead_hours,
-        "forecast": forecast,
+        "forecast": {
+            "temperature": gfs_forecast["temperature"],
+            "rainfall": gfs_forecast["rainfall"],
+            "wind_speed": gfs_forecast["wind_speed"],
+        },
         "weights": weights,
         "regime": regime,
         "extremes": extremes,
