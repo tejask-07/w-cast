@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Dict
 
 from app.services.gfs_forecast_service import (
     generate_real_gfs_forecast as _generate_real_gfs_forecast,
-    select_gfs_cycle,
 )
 
 from ml.pipeline import generate_forecast as generate_forecast_ml
@@ -16,16 +16,19 @@ SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
 
 
 def resolve_location_name(lat: float, lon: float) -> str:
-    location_map = {
-        (19.07, 72.87): "Mumbai",
-        (28.61, 77.21): "Delhi",
-        (22.57, 88.36): "Kolkata",
-        (13.08, 80.27): "Chennai",
+    locations = {
+        "Mumbai": (19.0760, 72.8777),
+        "Delhi": (28.6139, 77.2090),
+        "Kolkata": (22.5726, 88.3639),
+        "Chennai": (13.0827, 80.2707),
     }
 
-    return location_map.get(
-        (round(lat, 2), round(lon, 2)),
-        "Selected Location",
+    return min(
+        locations,
+        key=lambda name: (
+            (locations[name][0] - lat) ** 2
+            + (locations[name][1] - lon) ** 2
+        ),
     )
 
 
@@ -49,26 +52,59 @@ def generate_real_gfs_forecast(
 
 
 def _download_forecast_sources(lead_hours: int):
-    cycle_time = select_gfs_cycle()
+    now = datetime.now(timezone.utc)
 
-    try:
-        gfs_paths = download_gfs_subsets(
-            date=cycle_time,
-            forecast_hour=lead_hours,
-            save_dir="data/raw/gfs",
+    cycles = [18, 12, 6, 0]
+
+    for cycle in cycles:
+        cycle_time = now.replace(
+            hour=cycle,
+            minute=0,
+            second=0,
+            microsecond=0,
         )
 
-        gefs_paths = download_gefs_subsets(
-            date=cycle_time,
-            forecast_hour=lead_hours,
-            save_dir="data/raw/gefs",
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            "GFS or GEFS data unavailable from NOAA NOMADS"
-        ) from exc
+        if cycle_time > now:
+            cycle_time = cycle_time.replace(
+                day=cycle_time.day - 1
+            )
 
-    return gfs_paths, gefs_paths
+        print(
+            f"Trying forecast cycle: "
+            f"{cycle_time.strftime('%Y-%m-%d %H:%M UTC')}"
+        )
+
+        try:
+            gfs_paths = download_gfs_subsets(
+                date=cycle_time,
+                forecast_hour=lead_hours,
+                save_dir="data/raw/gfs",
+            )
+
+            gefs_paths = download_gefs_subsets(
+                date=cycle_time,
+                forecast_hour=lead_hours,
+                save_dir="data/raw/gefs",
+            )
+
+            print(
+                f"Using forecast cycle: "
+                f"{cycle_time.strftime('%Y-%m-%d %H:%M UTC')}"
+            )
+
+            return gfs_paths, gefs_paths
+
+        except Exception as exc:
+            print(
+                f"Cycle unavailable: "
+                f"{cycle_time.strftime('%Y-%m-%d %H:%M UTC')} "
+                f"({exc})"
+            )
+            continue
+
+    raise RuntimeError(
+        "No available GFS and GEFS forecast cycle found."
+    )
 
 
 def _api_variable(variable: str) -> str:
@@ -104,7 +140,9 @@ def generate_forecast(
 
     location_name = resolve_location_name(lat, lon)
 
-    gfs_paths, gefs_paths = _download_forecast_sources(lead_hours)
+    gfs_paths, gefs_paths = _download_forecast_sources(
+        lead_hours
+    )
 
     result = generate_forecast_ml(
         lat=lat,

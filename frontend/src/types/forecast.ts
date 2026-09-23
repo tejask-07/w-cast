@@ -1,0 +1,52 @@
+export type ForecastVariable = 'temperature' | 'rainfall' | 'wind_speed'
+
+export type ForecastLocation = {
+	name: string | null
+	lat: number
+	lon: number
+}
+
+export type ForecastValues = {
+	temperature: number
+	rainfall: number
+	wind_speed: number
+}
+
+export type ModelWeights = {
+	gfs: number
+	gefs: number
+	baseline: number
+}
+
+export type Extremes = {
+	heavy_rain: boolean
+	heat_wave: boolean
+	high_wind: boolean
+	risk_level: string
+}
+
+export type ForecastResponse = {
+	location: ForecastLocation
+	lead_hours: number
+	forecast: ForecastValues
+	weights: ModelWeights
+	regime: string
+	extremes: Extremes
+}
+
+export type ForecastQuery = {
+	lat: number
+	lon: number
+	lead_hours: number
+	variable: ForecastVariable
+}
+
+export type WeightResponse = {
+	location: {
+		lat: number
+		lon: number
+	}
+	lead_hours: number
+	weights: ModelWeights
+	regime: string
+}
