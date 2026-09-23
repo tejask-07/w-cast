@@ -1,0 +1,115 @@
+.forecast-map {
+  position: relative;
+
+  width: 100%;
+  height: min(70vh, 650px);
+
+  overflow: hidden;
+
+  border: 1px solid var(--line);
+
+  background: #e9e9e4;
+}
+
+.leaflet-map {
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * Keep Leaflet visually restrained so it fits
+ * the LEFORECAST editorial aesthetic.
+ */
+
+.leaflet-container {
+  font-family: var(--mono);
+  background: #e8e8e3;
+}
+
+.leaflet-tile {
+  filter: grayscale(1) contrast(0.82);
+}
+
+.leaflet-control-zoom {
+  border: 1px solid var(--ink) !important;
+  box-shadow: none !important;
+}
+
+.leaflet-control-zoom a {
+  width: 32px !important;
+  height: 32px !important;
+
+  line-height: 30px !important;
+
+  color: var(--ink) !important;
+  background: var(--bg) !important;
+
+  border-bottom: 1px solid var(--line) !important;
+
+  font-family: Arial, sans-serif;
+}
+
+.leaflet-control-zoom a:last-child {
+  border-bottom: 0 !important;
+}
+
+
+/* Selected location */
+
+.map-location-label {
+  position: absolute;
+
+  left: 25px;
+  bottom: 25px;
+
+  z-index: 500;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+
+  padding: 11px 14px;
+
+  background: rgba(245, 244, 239, 0.92);
+
+  border: 1px solid var(--ink);
+
+  font-family: var(--mono);
+  font-size: 11px;
+
+  pointer-events: none;
+}
+
+.map-location-label span:first-child {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+
+/* Map metadata */
+
+.map-info {
+  position: absolute;
+
+  top: 20px;
+  left: 20px;
+
+  z-index: 500;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+
+  padding: 9px 11px;
+
+  background: rgba(245, 244, 239, 0.88);
+
+  border-left: 2px solid var(--ink);
+
+  font-family: var(--mono);
+  font-size: 10px;
+
+  pointer-events: none;
+}
