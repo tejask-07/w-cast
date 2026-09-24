@@ -41,6 +41,15 @@ export type ForecastQuery = {
 	variable: ForecastVariable
 }
 
+export type ForecastAOI = {
+	north: number
+	south: number
+	east: number
+	west: number
+}
+
+export type SpatialForecastQuery = ForecastQuery & Partial<ForecastAOI>
+
 export type WeightResponse = {
 	location: {
 		lat: number
@@ -49,4 +58,26 @@ export type WeightResponse = {
 	lead_hours: number
 	weights: ModelWeights
 	regime: string
+}
+
+export type SpatialForecastResponse = {
+	variable: ForecastVariable
+	lead_hours: number
+	bounds: [[number, number], [number, number]]
+	image_url: string
+	min_value: number
+	max_value: number
+	unit: string
+}
+
+export type HourlyForecastPoint = {
+	hour: number
+	value: number
+}
+
+export type HourlyForecastResponse = {
+	variable: ForecastVariable
+	lead_hours: number
+	unit: string
+	points: HourlyForecastPoint[]
 }

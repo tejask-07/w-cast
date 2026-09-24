@@ -1,14 +1,20 @@
+import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  MapContainer,
-  TileLayer,
-  Rectangle,
-} from 'react-leaflet'
-import type { LatLngBoundsExpression } from 'leaflet'
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 import 'leaflet/dist/leaflet.css'
 import './Results.css'
 
+import ForecastMap from '../components/map/ForecastMap'
+import { useForecast } from '../hooks/useForecast'
 import type { ForecastResponse, ForecastVariable } from '../types/forecast'
 
 type AOI = {
@@ -36,6 +42,31 @@ function Results() {
 
   const request =
     location.state as ForecastRequest | null
+
+  const {
+    hourlyData,
+    hourlyLoading,
+    hourlyError,
+    fetchHourlyForecast,
+  } = useForecast()
+
+  useEffect(() => {
+    if (!request?.forecast) return
+
+    void fetchHourlyForecast({
+      lat: request.location.lat,
+      lon: request.location.lon,
+      lead_hours: request.lead_hours,
+      variable: request.variable,
+    }).catch(() => undefined)
+  }, [
+    fetchHourlyForecast,
+    request?.forecast,
+    request?.lead_hours,
+    request?.location.lat,
+    request?.location.lon,
+    request?.variable,
+  ])
 
   /*
    * If somebody opens /forecast/results directly,
@@ -92,17 +123,6 @@ function Results() {
   const variableLabel = request.variable === 'wind_speed'
     ? 'WIND SPEED'
     : request.variable.toUpperCase()
-
-  const bounds: LatLngBoundsExpression = [
-    [
-      request.aoi.south,
-      request.aoi.west,
-    ],
-    [
-      request.aoi.north,
-      request.aoi.east,
-    ],
-  ]
 
   return (
     <main className="results-page">
@@ -292,34 +312,17 @@ function Results() {
 
               <div className="results-map">
 
-                <MapContainer
-                  center={[
-                    request.location.lat,
-                    request.location.lon,
-                  ]}
-                  zoom={9}
-                  scrollWheelZoom
-                  zoomControl
-                  className="results-leaflet"
-                >
-
-                  <TileLayer
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    attribution="Tiles © Esri"
-                    maxZoom={19}
-                  />
-
-                  <Rectangle
-                    bounds={bounds}
-                    pathOptions={{
-                      color: '#ffffff',
-                      weight: 2,
-                      fillColor: '#ffffff',
-                      fillOpacity: 0.12,
-                    }}
-                  />
-
-                </MapContainer>
+                <ForecastMap
+                  latitude={request.location.lat}
+                  longitude={request.location.lon}
+                  city={request.location.name}
+                  leadHours={request.lead_hours}
+                  variable={request.variable}
+                  aoi={request.aoi}
+                  initialZoom={9}
+                  showChrome={false}
+                  satellite
+                />
 
                 <div className="results-map-label">
 
@@ -465,22 +468,54 @@ function Results() {
 
             </div>
 
-            <div className="empty-chart">
+            <div className="forecast-line-chart">
+              {hourlyLoading && (
+                <div className="chart-state">LOADING HOURLY FORECAST</div>
+              )}
 
-              <div className="chart-grid-lines">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
+              {hourlyError && (
+                <div className="chart-state">HOURLY FORECAST UNAVAILABLE</div>
+              )}
 
-              <div className="empty-chart-message">
-                HISTORICAL / FORECAST SERIES
-                <strong>
-                  {forecast.forecast[request.variable].toFixed(2)} {request.variable === 'temperature' ? '°C' : request.variable === 'rainfall' ? 'mm' : 'm/s'} AT VALID TIME
-                </strong>
-              </div>
-
+              {!hourlyLoading && !hourlyError && hourlyData && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={hourlyData.points} margin={{ top: 12, right: 12, bottom: 6, left: 0 }}>
+                    <CartesianGrid stroke="#dddddd" strokeDasharray="2 3" />
+                    <XAxis
+                      dataKey="hour"
+                      tick={{ fontSize: 8, fill: '#777' }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#999' }}
+                      tickFormatter={(hour: number) => `${hour}H`}
+                      interval={Math.max(0, Math.ceil(hourlyData.points.length / 8) - 1)}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 8, fill: '#777' }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#999' }}
+                      width={42}
+                      tickFormatter={(value: number) => value.toFixed(1)}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        border: '1px solid #111',
+                        borderRadius: 0,
+                        fontFamily: 'inherit',
+                        fontSize: 10,
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      name={variableLabel}
+                      stroke="#111111"
+                      strokeWidth={1.5}
+                      dot={{ r: 2, fill: '#111111' }}
+                      activeDot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </div>
 
           </section>

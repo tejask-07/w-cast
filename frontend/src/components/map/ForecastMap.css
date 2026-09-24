@@ -26,10 +26,6 @@
   background: #e8e8e3;
 }
 
-.leaflet-tile {
-  filter: grayscale(1) contrast(0.82);
-}
-
 .leaflet-control-zoom {
   border: 1px solid var(--ink) !important;
   box-shadow: none !important;
@@ -113,3 +109,42 @@
 
   pointer-events: none;
 }
+
+.forecast-map-legend {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 500;
+  min-width: 130px;
+  padding: 9px 10px;
+  background: rgba(245, 244, 239, 0.92);
+  border: 1px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.legend-temperature {
+  background: linear-gradient(90deg, #313695, #ffffbf, #a50026);
+}
+
+.legend-rainfall {
+  background: linear-gradient(90deg, #deebf7, #6baed6, #08519c);
+}
+
+.legend-wind_speed {
+  background: linear-gradient(90deg, #440154, #21918c, #fde725);
+}
+
+.legend-labels {
+  display: flex;
+  justify-content: space-between;
+}
+
+.legend-qualitative {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 9px;
+}
+

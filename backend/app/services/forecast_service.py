@@ -200,6 +200,7 @@ def generate_forecast(
         raise ValueError("lead_hours must be greater than zero")
 
     location_name = resolve_location_name(lat, lon)
+    history_path = REPO_ROOT / "data" / "processed" / "history_7d_multilead.json"
 
     gfs_paths, gefs_paths = _download_forecast_sources(
         lead_hours
@@ -212,6 +213,7 @@ def generate_forecast(
         variable=_api_variable(variable),
         gfs_file_path=gfs_paths,
         gefs_file_paths=gefs_paths,
+        history_path=history_path,
     )
 
     weights = result["all_weights"]

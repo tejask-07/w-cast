@@ -345,3 +345,104 @@ def test_verification_endpoint_returns_expected_metrics():
         "rmse",
         "bias",
     }
+
+
+def test_forecast_map_endpoint_returns_spatial_metadata(monkeypatch):
+    from app.api import forecast as forecast_api
+
+    monkeypatch.setattr(
+        forecast_api,
+        "generate_spatial_forecast_map",
+        lambda **kwargs: {
+            "variable": kwargs["variable"],
+            "lead_hours": kwargs["lead_hours"],
+            "bounds": [[14.0, 68.0], [24.0, 78.0]],
+            "image_url": "/api/forecast/map/image/test.png",
+            "min_value": 20.0,
+            "max_value": 30.0,
+            "unit": "°C",
+        },
+    )
+
+    response = client.get(
+        "/api/forecast/map",
+        params={
+            "lat": 19.076,
+            "lon": 72.8777,
+            "lead_hours": 24,
+            "variable": "temperature",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["variable"] == "temperature"
+    assert data["lead_hours"] == 24
+    assert data["bounds"] == [[14.0, 68.0], [24.0, 78.0]]
+    assert data["image_url"].startswith("/api/forecast/map/image/")
+
+
+def test_forecast_map_rejects_invalid_variable():
+    response = client.get(
+        "/api/forecast/map",
+        params={
+            "lat": 19.076,
+            "lon": 72.8777,
+            "lead_hours": 24,
+            "variable": "humidity",
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def test_forecast_map_rejects_invalid_lead_time():
+    response = client.get(
+        "/api/forecast/map",
+        params={
+            "lat": 19.076,
+            "lon": 72.8777,
+            "lead_hours": 12,
+            "variable": "temperature",
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def test_hourly_forecast_endpoint_returns_real_series_contract(monkeypatch):
+    from app.api import forecast as forecast_api
+
+    monkeypatch.setattr(
+        forecast_api,
+        "generate_hourly_forecast",
+        lambda **kwargs: {
+            "variable": kwargs["variable"],
+            "lead_hours": kwargs["lead_hours"],
+            "unit": "°C",
+            "points": [
+                {"hour": 0, "value": 27.1},
+                {"hour": 1, "value": 27.0},
+            ],
+        },
+    )
+
+    response = client.get(
+        "/api/forecast/hourly",
+        params={
+            "lat": 19.076,
+            "lon": 72.8777,
+            "lead_hours": 24,
+            "variable": "temperature",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["variable"] == "temperature"
+    assert data["lead_hours"] == 24
+    assert data["unit"] == "°C"
+    assert data["points"] == [
+        {"hour": 0, "value": 27.1},
+        {"hour": 1, "value": 27.0},
+    ]

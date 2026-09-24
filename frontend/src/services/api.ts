@@ -2,12 +2,15 @@ import type {
 	Extremes,
 	ForecastQuery,
 	ForecastResponse,
+	HourlyForecastResponse,
+	SpatialForecastQuery,
+	SpatialForecastResponse,
 	WeightResponse,
 } from '../types/forecast'
 import type { VerificationResponse } from '../types/verification'
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '')
-	?? 'http://127.0.0.1:8000'
+	?? 'http://127.0.0.1:8001'
 
 export class ApiError extends Error {
 	status: number
@@ -68,6 +71,21 @@ function isVerificationResponse(value: unknown): value is VerificationResponse {
 	})
 }
 
+function isSpatialForecastResponse(value: unknown): value is SpatialForecastResponse {
+	if (!isRecord(value) || typeof value.variable !== 'string' || !isNumber(value.lead_hours)
+		|| !Array.isArray(value.bounds) || value.bounds.length !== 2
+		|| typeof value.image_url !== 'string' || !isNumber(value.min_value)
+		|| !isNumber(value.max_value) || typeof value.unit !== 'string') return false
+	return value.bounds.every((bound) => Array.isArray(bound) && bound.length === 2
+		&& isNumber(bound[0]) && isNumber(bound[1]))
+}
+
+function isHourlyForecastResponse(value: unknown): value is HourlyForecastResponse {
+	if (!isRecord(value) || typeof value.variable !== 'string' || !isNumber(value.lead_hours)
+		|| typeof value.unit !== 'string' || !Array.isArray(value.points)) return false
+	return value.points.every((point) => isRecord(point) && isNumber(point.hour) && isNumber(point.value))
+}
+
 async function request<T>(path: string, validate: (value: unknown) => value is T): Promise<T> {
 	let response: Response
 	try {
@@ -109,4 +127,16 @@ export function getExtremes(params: Omit<ForecastQuery, 'variable'>): Promise<Ex
 
 export function getVerification(params: ForecastQuery): Promise<VerificationResponse> {
 	return request(`/api/verification?${query(params)}`, isVerificationResponse)
+}
+
+export function getForecastMap(params: SpatialForecastQuery): Promise<SpatialForecastResponse> {
+	return request(`/api/forecast/map?${query(params)}`, isSpatialForecastResponse)
+}
+
+export function getApiUrl(path: string): string {
+	return `${API_URL}${path}`
+}
+
+export function getHourlyForecast(params: ForecastQuery): Promise<HourlyForecastResponse> {
+	return request(`/api/forecast/hourly?${query(params)}`, isHourlyForecastResponse)
 }

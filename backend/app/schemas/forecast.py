@@ -70,3 +70,31 @@ class WeightSummaryResponse(BaseModel):
     lead_hours: int = Field(..., gt=0)
     weights: ModelWeights
     regime: str
+
+
+class SpatialForecastResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    variable: str
+    lead_hours: int = Field(..., gt=0)
+    bounds: list[list[float]]
+    image_url: str
+    min_value: float
+    max_value: float
+    unit: str
+
+
+class HourlyForecastPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hour: int = Field(..., ge=0)
+    value: float
+
+
+class HourlyForecastResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    variable: str
+    lead_hours: int = Field(..., gt=0)
+    unit: str
+    points: list[HourlyForecastPoint]
