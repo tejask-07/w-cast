@@ -7,7 +7,12 @@ from app.schemas.forecast import (
     SpatialForecastResponse,
     WeightSummaryResponse,
 )
-from app.services.forecast_service import generate_forecast, generate_weights, validate_variable
+from app.services.forecast_service import (
+    generate_extremes,
+    generate_forecast,
+    generate_weights,
+    validate_variable,
+)
 from app.services.spatial_forecast_service import (
     generate_spatial_forecast_map,
     get_cached_map_path,
@@ -49,6 +54,25 @@ def get_weights(
         return generate_weights(lat=lat, lon=lon, lead_hours=lead_hours)
     except Exception as exc:  # pragma: no cover - service boundary failsafe
         raise HTTPException(status_code=503, detail="Weight service unavailable") from exc
+
+
+@router.get("/extremes")
+def get_extremes(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    lead_hours: int = Query(..., gt=0),
+):
+    try:
+        return generate_extremes(
+            lat=lat,
+            lon=lon,
+            lead_hours=lead_hours,
+        )
+    except Exception as exc:  # pragma: no cover - service boundary failsafe
+        raise HTTPException(
+            status_code=503,
+            detail="Extreme detection service unavailable",
+        ) from exc
 
 
 @router.get("/forecast/map", response_model=SpatialForecastResponse)

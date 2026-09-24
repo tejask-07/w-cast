@@ -70,10 +70,12 @@ def build_historical_weights(path=DEFAULT_HISTORY):
         if gfs_mae is None and gefs_mae is None:
             continue
 
-        weights = adaptive_weights({
+        errors_for_weights = {
             "gfs": gfs_mae,
             "gefs": gefs_mae,
-        })
+        }
+
+        weights = adaptive_weights(errors_for_weights)
 
         result.setdefault(city, {})
         result[city].setdefault(variable, {})

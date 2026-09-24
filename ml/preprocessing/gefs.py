@@ -16,6 +16,15 @@ GEFS_MEMBER = "avg"
 GEFS_PRIORITY = ["nomads"]
 
 
+def _is_archive_unavailable(error: BaseException) -> bool:
+    message = str(error).lower()
+    return (
+        "no index file was found" in message
+        or "did not find" in message
+        or "index file" in message and "none" in message
+    )
+
+
 def _inventory_searches(forecast: Any) -> dict[str, str]:
     """Find unique verified field searches in the actual GEFS index."""
     inventory = forecast.inventory()
@@ -47,7 +56,7 @@ def download_gefs_subsets(
     save_dir: str | Path = "data/raw/gefs",
     product: str = GEFS_PRODUCT,
     member: str = GEFS_MEMBER,
-) -> dict[str, Path]:
+) -> dict[str, Path] | None:
     """Download ensemble-mean GEFS subsets from NOAA NOMADS.
 
     The function queries the real Herbie index and downloads only the four
@@ -71,8 +80,21 @@ def download_gefs_subsets(
             fxx=forecast_hour,
             priority=GEFS_PRIORITY,
         )
+    except Exception as exc:
+        if _is_archive_unavailable(exc):
+            return None
+        raise RuntimeError(
+            f"Could not inspect GEFS ensemble-mean inventory on NOAA NOMADS: {exc}"
+        ) from exc
+
+    if getattr(forecast, "idx", True) in (None, False):
+        return None
+
+    try:
         searches = _inventory_searches(forecast)
     except Exception as exc:
+        if _is_archive_unavailable(exc):
+            return None
         raise RuntimeError(
             f"Could not inspect GEFS ensemble-mean inventory on NOAA NOMADS: {exc}"
         ) from exc

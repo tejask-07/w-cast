@@ -17,7 +17,7 @@ def test_download_gfs_subsets_uses_verified_searches_and_naive_utc(monkeypatch, 
         def __init__(self, **kwargs):
             calls.append(("init", kwargs))
 
-        def download(self, *, search, save_dir):
+        def download(self, *, search, save_dir, source, overwrite, errors):
             calls.append(("download", search, Path(save_dir)))
             path = Path(save_dir) / f"{len([call for call in calls if call[0] == 'download'])}.grib2"
             path.touch()
@@ -49,5 +49,49 @@ def test_download_gfs_subsets_reports_missing_nomads_file(monkeypatch, tmp_path)
 
     monkeypatch.setitem(sys.modules, "herbie", SimpleNamespace(Herbie=FakeHerbie))
 
-    with pytest.raises(RuntimeError, match="returned no file"):
+    with pytest.raises(RuntimeError, match="Could not download any GFS subset"):
         download_gfs_subsets(datetime(2026, 9, 22, 6), 24, save_dir=tmp_path)
+
+
+def test_download_gfs_subsets_falls_back_after_source_timeout(monkeypatch, tmp_path):
+    attempts = []
+
+    class FakeHerbie:
+        def __init__(self, **kwargs):
+            self.source = kwargs["priority"][0]
+
+        def download(self, *, search, save_dir, source, overwrite, errors):
+            attempts.append((self.source, source, search))
+            if source == "nomads":
+                raise TimeoutError("timed out")
+            path = Path(save_dir) / f"{len(attempts)}.grib2"
+            path.touch()
+            return path
+
+    monkeypatch.setitem(sys.modules, "herbie", SimpleNamespace(Herbie=FakeHerbie))
+    result = download_gfs_subsets(datetime(2026, 9, 22, 6), 24, save_dir=tmp_path)
+
+    assert set(result) == set(GFS_SUBSET_SEARCHES)
+    assert {attempt[0] for attempt in attempts} == {"nomads", "aws"}
+    assert all(attempt[1] == attempt[0] for attempt in attempts)
+    assert len(result.source_failures) == len(GFS_SUBSET_SEARCHES)
+
+
+def test_download_gfs_subsets_keeps_unrelated_subsets_when_one_fails(monkeypatch, tmp_path):
+    class FakeHerbie:
+        def __init__(self, **kwargs):
+            self.source = kwargs["priority"][0]
+
+        def download(self, *, search, save_dir, source, overwrite, errors):
+            if search == GFS_SUBSET_SEARCHES["temperature"]:
+                raise TimeoutError("temperature timed out")
+            path = Path(save_dir) / f"{source}-{len(list(Path(save_dir).glob('*.grib2')))}.grib2"
+            path.touch()
+            return path
+
+    monkeypatch.setitem(sys.modules, "herbie", SimpleNamespace(Herbie=FakeHerbie))
+    result = download_gfs_subsets(datetime(2026, 9, 22, 6), 24, save_dir=tmp_path)
+
+    assert "temperature" not in result
+    assert set(result) == {"wind_u", "wind_v", "precipitation"}
+    assert result.missing_subsets == ["temperature"]

@@ -1,4 +1,4 @@
-"""Memory-efficient extraction from verified GFS GRIB subset files."""
+﻿"""Memory-efficient extraction from verified GFS GRIB subset files."""
 
 from __future__ import annotations
 
@@ -128,3 +128,119 @@ def extract_gfs_point(
             "precipitation": "available" if precipitation_kg_m2 is not None else "unavailable",
         },
     }
+def extract_gfs_grid(
+    file_path: str | Path | FieldPaths,
+    bounds: tuple[float, float, float, float] = (
+        8.0,
+        37.5,
+        68.0,
+        97.5,
+    ),
+) -> dict[str, Any]:
+    """
+    Extract native-resolution GFS grids inside geographic bounds.
+
+    bounds:
+        (latitude_min, latitude_max, longitude_min, longitude_max)
+    """
+
+    latitude_min = float(bounds[0])
+    latitude_max = float(bounds[1])
+    longitude_min = float(bounds[2])
+    longitude_max = float(bounds[3])
+
+    if latitude_min >= latitude_max:
+        raise ValueError(
+            "latitude_min must be less than latitude_max"
+        )
+
+    if longitude_min >= longitude_max:
+        raise ValueError(
+            "longitude_min must be less than longitude_max"
+        )
+
+    fields = {
+        "temperature": ("t2m", "2t"),
+        "wind_u": ("u10",),
+        "wind_v": ("v10",),
+        "precipitation": ("tp",),
+    }
+
+    result: dict[str, Any] = {}
+
+    for field, variable_names in fields.items():
+        path = _field_path(file_path, field)
+
+        if path is None:
+            result[field] = None
+            continue
+
+        if not Path(path).is_file():
+            result[field] = None
+            continue
+
+        dataset = None
+
+        try:
+            dataset = open_gfs_subset(path)
+
+            variable_name = next(
+                (
+                    name
+                    for name in variable_names
+                    if name in dataset.data_vars
+                ),
+                None,
+            )
+
+            if variable_name is None:
+                result[field] = None
+                continue
+
+            latitude_name = _coordinate_name(
+                dataset,
+                "latitude",
+                "lat",
+            )
+
+            longitude_name = _coordinate_name(
+                dataset,
+                "longitude",
+                "lon",
+            )
+
+            latitude = dataset[latitude_name]
+            longitude = dataset[longitude_name]
+
+            longitude_min_normalized = normalize_longitude(
+                dataset,
+                longitude_min,
+            )
+
+            longitude_max_normalized = normalize_longitude(
+                dataset,
+                longitude_max,
+            )
+
+            latitude_mask = (
+                (latitude >= latitude_min)
+                & (latitude <= latitude_max)
+            )
+
+            longitude_mask = (
+                (longitude >= longitude_min_normalized)
+                & (longitude <= longitude_max_normalized)
+            )
+
+            selected = dataset[variable_name].where(
+                latitude_mask & longitude_mask,
+                drop=True,
+            ).load()
+
+            result[field] = selected
+
+        finally:
+            if dataset is not None:
+                dataset.close()
+
+    return result

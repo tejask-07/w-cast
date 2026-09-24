@@ -68,18 +68,48 @@ def extract_nearest_grid_point(
 	return dataset.sel(lat=latitude, lon=longitude, method="nearest")
 
 
+LOCATION_METADATA = {
+	"Mumbai": {"latitude": 19.0760, "longitude": 72.8777, "region": "west_coast"},
+	"Pune": {"latitude": 18.5204, "longitude": 73.8567, "region": "west"},
+	"Ahmedabad": {"latitude": 23.0225, "longitude": 72.5714, "region": "west"},
+	"Jaipur": {"latitude": 26.9124, "longitude": 75.7873, "region": "northwest"},
+	"Delhi": {"latitude": 28.6139, "longitude": 77.2090, "region": "north"},
+	"Chandigarh": {"latitude": 30.7333, "longitude": 76.7794, "region": "north"},
+	"Lucknow": {"latitude": 26.8467, "longitude": 80.9462, "region": "north"},
+	"Srinagar": {"latitude": 34.0837, "longitude": 74.7973, "region": "himalayan"},
+	"Dehradun": {"latitude": 30.3165, "longitude": 78.0322, "region": "himalayan"},
+	"Bhopal": {"latitude": 23.2599, "longitude": 77.4126, "region": "central"},
+	"Nagpur": {"latitude": 21.1458, "longitude": 79.0882, "region": "central"},
+	"Kolkata": {"latitude": 22.5726, "longitude": 88.3639, "region": "east"},
+	"Bhubaneswar": {"latitude": 20.2961, "longitude": 85.8245, "region": "east_coast"},
+	"Guwahati": {"latitude": 26.1445, "longitude": 91.7362, "region": "northeast"},
+	"Patna": {"latitude": 25.5941, "longitude": 85.1376, "region": "east"},
+	"Chennai": {"latitude": 13.0827, "longitude": 80.2707, "region": "southeast_coast"},
+	"Bengaluru": {"latitude": 12.9716, "longitude": 77.5946, "region": "south"},
+	"Hyderabad": {"latitude": 17.3850, "longitude": 78.4867, "region": "south_central"},
+	"Kochi": {"latitude": 9.9312, "longitude": 76.2673, "region": "southwest_coast"},
+	"Visakhapatnam": {"latitude": 17.6868, "longitude": 83.2185, "region": "east_coast"},
+}
+
+INDIA_LOCATIONS = tuple(LOCATION_METADATA)
+
 CITIES = {
-	"Mumbai": (19.0760, 72.8777),
-	"Delhi": (28.6139, 77.2090),
-	"Kolkata": (22.5726, 88.3639),
-	"Chennai": (13.0827, 80.2707),
+	city: (
+		LOCATION_METADATA[city]["latitude"],
+		LOCATION_METADATA[city]["longitude"],
+	)
+	for city in ("Mumbai", "Delhi", "Kolkata", "Chennai")
 }
 
 
 def extract_city_grid_point(dataset: xr.Dataset, city: str) -> xr.Dataset:
 	"""Select a named MVP city using the nearest grid point."""
 	try:
-		latitude, longitude = CITIES[city]
+		metadata = LOCATION_METADATA[city]
 	except KeyError as exc:
-		raise ValueError(f"Unknown city '{city}'. Available cities: {sorted(CITIES)}") from exc
-	return extract_nearest_grid_point(dataset, latitude, longitude)
+		raise ValueError(f"Unknown city '{city}'. Available cities: {sorted(LOCATION_METADATA)}") from exc
+	return extract_nearest_grid_point(
+		dataset,
+		metadata["latitude"],
+		metadata["longitude"],
+	)
