@@ -26,7 +26,7 @@ def test_download_gfs_normalizes_aware_datetime(monkeypatch, tmp_path):
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
-        def download(self, save_dir):
+        def download(self, save_dir, **kwargs):
             path = tmp_path / "forecast.grib2"
             path.touch()
             return path

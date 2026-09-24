@@ -1,14 +1,12 @@
-
-"""Adaptive GFS + GEFS forecast pipeline."""
+﻿"""Adaptive GFS + GEFS spatial forecast pipeline."""
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ml.blending.blender import blend_forecasts
-from ml.evaluation.historical_weights import build_historical_weights
 from ml.regimes.classifier import classify_regime
 from ml.regimes.extremes import detect_extremes
+from ml.spatial.spatial_blend import spatial_blend
 
 
 class ForecastDataUnavailable(RuntimeError):
@@ -37,7 +35,7 @@ CITIES = {
 }
 
 
-def _nearest_city(lat, lon):
+def _nearest_city(lat: float, lon: float) -> str:
     return min(
         CITIES,
         key=lambda city: (
@@ -54,14 +52,14 @@ def generate_forecast(
     variable: str,
     gfs_file_path: str | Path | dict | None = None,
     gefs_file_paths: dict | None = None,
-    history_path: str | Path = "data/processed/history_7d_multilead.json",
+    history_path: str | Path = "data/processed/india_weight_map_7d.json",
 ) -> dict[str, Any]:
 
     if variable not in FIELDS:
         raise ValueError(f"Unsupported variable: {variable}")
 
-    if lead_hours < 0:
-        raise ValueError("lead_hours must be non-negative")
+    if lead_hours not in (24, 48, 72):
+        raise ValueError("lead_hours must be one of: 24, 48, 72")
 
     if gfs_file_path is None or gefs_file_paths is None:
         raise ForecastDataUnavailable(
@@ -74,21 +72,25 @@ def generate_forecast(
     request = ForecastRequest(lat, lon, lead_hours, variable)
 
     gfs = extract_gfs_point(
-        gfs_file_path, lat, lon, lead_hours
+        gfs_file_path,
+        lat,
+        lon,
+        lead_hours,
     )
 
     gefs = extract_gefs_point(
-        gefs_file_paths, lat, lon, lead_hours
+        gefs_file_paths,
+        lat,
+        lon,
+        lead_hours,
     )
-
-    city = _nearest_city(lat, lon)
-    history = build_historical_weights(history_path)
 
     blended = {}
     all_weights = {}
     historical_skill = {}
 
     for name, field in FIELDS.items():
+
         gfs_value = gfs.get(field)
         gefs_value = gefs.get(field)
 
@@ -97,33 +99,25 @@ def generate_forecast(
                 f"Missing {name} from GFS or GEFS."
             )
 
-        skill = (
-            history.get(city, {})
-            .get(name, {})
-            .get(str(lead_hours))
+        result = spatial_blend(
+            latitude=lat,
+            longitude=lon,
+            variable=name,
+            lead_hours=lead_hours,
+            gfs_value=float(gfs_value),
+            gefs_value=float(gefs_value),
         )
 
-        if skill is None:
-            weights = {"gfs": 0.5, "gefs": 0.5}
-            historical_skill[name] = None
-        else:
-            weights = skill["weights"]
-            historical_skill[name] = {
-                "gfs_mae": skill["gfs_mae"],
-                "gefs_mae": skill["gefs_mae"],
-                "gfs_sample_count": skill["gfs_sample_count"],
-                "gefs_sample_count": skill["gefs_sample_count"],
-                "source": skill["source"],
-            }
+        blended[name] = result["blended"]
+        all_weights[name] = result["weights"]
 
-        blended[name] = float(
-            blend_forecasts(
-                {"gfs": gfs_value, "gefs": gefs_value},
-                weights,
-            )
-        )
-
-        all_weights[name] = weights
+        historical_skill[name] = {
+            "gfs_mae": result["gfs_mae"],
+            "gefs_mae": result["gefs_mae"],
+            "gfs_sample_count": result["gfs_sample_count"],
+            "gefs_sample_count": result["gefs_sample_count"],
+            "source": result["skill_source"],
+        }
 
     regime = classify_regime(blended["precipitation"])
 
@@ -132,6 +126,8 @@ def generate_forecast(
         temperature_c=blended["temperature"],
         wind_speed_ms=blended["wind_speed"],
     )
+
+    city = _nearest_city(lat, lon)
 
     return {
         "request": request,

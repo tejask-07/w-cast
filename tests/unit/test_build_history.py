@@ -1,5 +1,6 @@
 """Offline tests for historical record construction."""
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -66,6 +67,35 @@ def test_matches_exact_valid_time_for_each_city_and_variable(offline_sources):
     assert len(offline_sources["obs"]) == 2
 
 
+def test_twenty_location_dataset_reuses_forecasts_and_adds_regions(offline_sources):
+    result = build_history.build_historical_records(
+        [INIT],
+        locations=20,
+        variables=["temperature"],
+    )
+
+    assert len(result["records"]) == 20
+    assert len(offline_sources["gfs"]) == 1
+    assert len(offline_sources["gefs"]) == 1
+    assert len(offline_sources["obs"]) == 20
+    assert {record["city"] for record in result["records"]} == set(build_history.INDIA_LOCATIONS)
+    assert {record["region"] for record in result["records"]} == {
+        "west_coast",
+        "north",
+        "east",
+        "southeast_coast",
+        "west",
+        "northwest",
+        "himalayan",
+        "central",
+        "east_coast",
+        "northeast",
+        "south",
+        "south_central",
+        "southwest_coast",
+    }
+
+
 def test_duplicate_downloads_are_avoided_and_utc_is_normalized(offline_sources):
     naive = INIT.replace(tzinfo=None)
     result = build_history.build_historical_records([naive, INIT, INIT.isoformat().replace("+00:00", "Z")], cities=["Mumbai"], variables=["temperature"])
@@ -94,6 +124,37 @@ def test_json_save_and_load(offline_sources, tmp_path):
     loaded = build_history.load_historical_records(path)
     assert loaded == result
     assert path.read_text(encoding="utf-8").count("Z") >= 2
+
+
+def test_resume_skips_completed_combinations_and_deduplicates(offline_sources, tmp_path):
+    path = tmp_path / "history.json"
+    first = build_history.build_historical_records(
+        [INIT],
+        cities=["Mumbai"],
+        output_path=path,
+    )
+    first_downloads = {
+        source: len(offline_sources[source])
+        for source in ("gfs", "gefs")
+    }
+    first_observations = len(offline_sources["obs"])
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["records"].append(payload["records"][0])
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    resumed = build_history.build_historical_records(
+        [INIT],
+        cities=["Mumbai"],
+        output_path=path,
+        resume=True,
+    )
+
+    assert len(first["records"]) == 3
+    assert len(resumed["records"]) == 3
+    assert len(offline_sources["gfs"]) == first_downloads["gfs"]
+    assert len(offline_sources["gefs"]) == first_downloads["gefs"]
+    assert len(offline_sources["obs"]) == first_observations
 
 
 def test_future_dates_are_rejected(offline_sources):

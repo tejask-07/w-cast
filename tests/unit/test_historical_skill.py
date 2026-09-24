@@ -52,7 +52,7 @@ def test_missing_gfs_and_gefs():
     assert summary.empty
 
 
-@pytest.mark.parametrize("kwargs", [{"city": "Pune"}, {"variable": "pressure"}, {"lead_hours": -1}])
+@pytest.mark.parametrize("kwargs", [{"city": "Atlantis"}, {"variable": "pressure"}, {"lead_hours": -1}])
 def test_invalid_record_inputs(kwargs):
     with pytest.raises(ValueError):
         make_record(**kwargs)

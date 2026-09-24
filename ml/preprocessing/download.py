@@ -1,7 +1,10 @@
 """Download GFS GRIB2 files from NOAA through Herbie."""
 
+import socket
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Iterator
 
 
 GFS_SUBSET_SEARCHES = {
@@ -17,6 +20,40 @@ GFS_SOURCES = [
     "google",
     "azure",
 ]
+GFS_REQUEST_TIMEOUT = 30
+
+
+class GFSDownloadError(RuntimeError):
+    """Raised when no GFS subset could be downloaded from any source."""
+
+    def __init__(self, message: str, source_failures: list[dict[str, Any]], missing_subsets: list[str]):
+        super().__init__(message)
+        self.source_failures = source_failures
+        self.missing_subsets = missing_subsets
+
+
+class GFSDownloadResult(dict[str, Path]):
+    """Downloaded GFS subsets plus non-schema diagnostics for the builder."""
+
+    def __init__(
+        self,
+        paths: dict[str, Path],
+        source_failures: list[dict[str, Any]],
+        missing_subsets: list[str],
+    ):
+        super().__init__(paths)
+        self.source_failures = source_failures
+        self.missing_subsets = missing_subsets
+
+
+@contextmanager
+def _bounded_network() -> Iterator[None]:
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(GFS_REQUEST_TIMEOUT)
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
 
 
 def _as_naive_utc(date: datetime) -> datetime:
@@ -32,6 +69,7 @@ def _create_herbie(
     forecast_hour: int,
     product: str,
     save_dir: Path,
+    source: str | None = None,
 ):
     from herbie import Herbie
 
@@ -40,7 +78,7 @@ def _create_herbie(
         model="gfs",
         product=product,
         fxx=forecast_hour,
-        priority=GFS_SOURCES,
+        priority=GFS_SOURCES if source is None else [source],
         save_dir=save_dir,
         overwrite=False,
     )
@@ -60,38 +98,37 @@ def download_gfs(
     destination = Path(save_dir)
     destination.mkdir(parents=True, exist_ok=True)
 
-    try:
-        forecast = _create_herbie(
-            date=date,
-            forecast_hour=forecast_hour,
-            product=product,
-            save_dir=destination,
-        )
+    failures = []
+    for source in GFS_SOURCES:
+        try:
+            with _bounded_network():
+                forecast = _create_herbie(
+                    date=date,
+                    forecast_hour=forecast_hour,
+                    product=product,
+                    save_dir=destination,
+                    source=source,
+                )
+                downloaded = forecast.download(
+                    save_dir=destination,
+                    overwrite=False,
+                    errors="raise",
+                    source=source,
+                )
+            if downloaded is None:
+                raise RuntimeError("Herbie returned no GFS file")
+            path = Path(downloaded)
+            if not path.exists():
+                raise FileNotFoundError(f"Herbie reported a missing GFS file: {path}")
+            return path
+        except Exception as exc:
+            failures.append({"source": source, "reason": f"{type(exc).__name__}: {exc}"})
 
-        downloaded = forecast.download(
-            save_dir=destination,
-            overwrite=False,
-            errors="raise",
-        )
-
-    except Exception as exc:
-        raise RuntimeError(
-            f"Could not download GFS F{forecast_hour:03d}: {exc}"
-        ) from exc
-
-    if downloaded is None:
-        raise RuntimeError(
-            f"Herbie returned no GFS file for F{forecast_hour:03d}"
-        )
-
-    path = Path(downloaded)
-
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Herbie reported a missing GFS file: {path}"
-        )
-
-    return path
+    raise GFSDownloadError(
+        f"Could not download GFS F{forecast_hour:03d} from any configured source",
+        failures,
+        ["full_file"],
+    )
 
 
 def download_gfs_subsets(
@@ -108,49 +145,59 @@ def download_gfs_subsets(
     destination = Path(save_dir)
     destination.mkdir(parents=True, exist_ok=True)
 
-    try:
-        forecast = _create_herbie(
-            date=date,
-            forecast_hour=forecast_hour,
-            product=product,
-            save_dir=destination,
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Could not access GFS forecast F{forecast_hour:03d}: {exc}"
-        ) from exc
-
     paths: dict[str, Path] = {}
+    source_failures: list[dict[str, Any]] = []
+    missing_subsets: list[str] = []
+    forecasts: dict[str, Any] = {}
+    unavailable_sources: set[str] = set()
 
     for name, search in GFS_SUBSET_SEARCHES.items():
-        try:
-            downloaded = forecast.download(
-                search=search,
-                save_dir=destination,
-                overwrite=False,
-                errors="raise",
-            )
+        for source in GFS_SOURCES:
+            if source in unavailable_sources:
+                continue
+            try:
+                if source not in forecasts:
+                    with _bounded_network():
+                        forecasts[source] = _create_herbie(
+                            date=date,
+                            forecast_hour=forecast_hour,
+                            product=product,
+                            save_dir=destination,
+                            source=source,
+                        )
+                with _bounded_network():
+                    downloaded = forecasts[source].download(
+                        search=search,
+                        save_dir=destination,
+                        overwrite=False,
+                        errors="raise",
+                        source=source,
+                    )
+                if downloaded is None:
+                    raise RuntimeError("Herbie returned no GFS subset")
+                path = Path(downloaded)
+                if not path.exists():
+                    raise FileNotFoundError(f"Herbie reported a missing GFS subset: {path}")
+                paths[name] = path
+                break
+            except Exception as exc:
+                source_failures.append(
+                    {
+                        "subset": name,
+                        "source": source,
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+                if source not in forecasts:
+                    unavailable_sources.add(source)
+        else:
+            missing_subsets.append(name)
 
-        except Exception as exc:
-            raise RuntimeError(
-                f"Could not download GFS subset '{name}' "
-                f"for F{forecast_hour:03d}: {exc}"
-            ) from exc
+    if not paths:
+        raise GFSDownloadError(
+            f"Could not download any GFS subset for F{forecast_hour:03d}",
+            source_failures,
+            missing_subsets,
+        )
 
-        if downloaded is None:
-            raise RuntimeError(
-                f"No GFS subset returned for '{name}' "
-                f"at F{forecast_hour:03d}"
-            )
-
-        path = Path(downloaded)
-
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Herbie reported a missing GFS subset for "
-                f"'{name}': {path}"
-            )
-
-        paths[name] = path
-
-    return paths
+    return GFSDownloadResult(paths, source_failures, missing_subsets)

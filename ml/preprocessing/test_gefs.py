@@ -55,6 +55,27 @@ def test_download_gefs_rejects_non_mean_member(tmp_path):
         gefs.download_gefs_subsets(datetime(2026, 9, 22, 6), 24, tmp_path, member="p01")
 
 
+def test_download_gefs_returns_none_when_archive_index_is_missing(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeHerbie:
+        idx = None
+
+        def __init__(self, **kwargs):
+            calls.append("init")
+
+        def inventory(self):
+            calls.append("inventory")
+            raise AssertionError("inventory should not run without an index")
+
+    monkeypatch.setitem(sys.modules, "herbie", SimpleNamespace(Herbie=FakeHerbie))
+
+    assert gefs.download_gefs_subsets(
+        datetime(2026, 9, 22, 6), 24, tmp_path
+    ) is None
+    assert calls == ["init"]
+
+
 def test_extract_gefs_point_uses_common_schema(monkeypatch):
     expected = {
         "temperature_C": 28.0,
