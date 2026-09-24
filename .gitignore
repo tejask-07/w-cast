@@ -23,3 +23,5 @@ test_gfs.py
 
 # Runtime/downloaded GFS data
 backend/data/
+
+data/interim/forecast_maps/
