@@ -1,18 +1,31 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
+from pathlib import Path
 from typing import Dict
 
 from app.services.gfs_forecast_service import (
     generate_real_gfs_forecast as _generate_real_gfs_forecast,
 )
 
+from ml.blending.blender import blend_forecasts
+from ml.evaluation.historical_weights import build_historical_weights
 from ml.pipeline import generate_forecast as generate_forecast_ml
 from ml.preprocessing.download import download_gfs_subsets
 from ml.preprocessing.gefs import download_gefs_subsets
+from ml.regimes.classifier import classify_regime
+from ml.regimes.extremes import detect_extremes
 
 
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
+REPO_ROOT = Path(__file__).resolve().parents[3]
+HISTORY_PATH = REPO_ROOT / "data" / "processed" / "history_2d.json"
+HISTORY_VARIABLES = {
+    "temperature": "temperature",
+    "rainfall": "precipitation",
+    "wind_speed": "wind_speed",
+}
 
 
 def resolve_location_name(lat: float, lon: float) -> str:
@@ -126,6 +139,54 @@ def _risk_level(extremes: dict[str, bool]) -> str:
     return "low"
 
 
+def _load_historical_records() -> list[dict]:
+    with HISTORY_PATH.open("r", encoding="utf-8") as file:
+        return json.load(file)["records"]
+
+
+def _historical_metadata(
+    lat: float,
+    lon: float,
+    lead_hours: int,
+) -> tuple[dict[str, float], dict[str, float]]:
+    if lead_hours <= 0:
+        raise ValueError("lead_hours must be greater than zero")
+
+    city = resolve_location_name(lat, lon)
+    historical_weights = build_historical_weights(HISTORY_PATH)
+    weights = historical_weights.get(city, {}).get("temperature", {}).get(
+        str(lead_hours), {}
+    ).get("weights", {"gfs": 0.5, "gefs": 0.5})
+
+    records = {
+        record["variable"]: record
+        for record in _load_historical_records()
+        if record.get("city") == city
+        and record.get("lead_hours") == lead_hours
+        and record.get("variable") in HISTORY_VARIABLES.values()
+        and record.get("gfs") is not None
+        and record.get("gefs") is not None
+    }
+
+    missing = set(HISTORY_VARIABLES.values()) - set(records)
+    if missing:
+        raise ValueError(
+            f"No historical forecast data available for {city}, {lead_hours}h"
+        )
+
+    values = {
+        variable: float(
+            blend_forecasts(
+                {"gfs": records[internal]["gfs"], "gefs": records[internal]["gefs"]},
+                weights,
+            )
+        )
+        for variable, internal in HISTORY_VARIABLES.items()
+    }
+
+    return weights, values
+
+
 def generate_forecast(
     lat: float,
     lon: float,
@@ -187,12 +248,7 @@ def generate_weights(
     lead_hours: int,
 ) -> Dict[str, object]:
 
-    result = generate_forecast(
-        lat=lat,
-        lon=lon,
-        lead_hours=lead_hours,
-        variable="temperature",
-    )
+    weights, values = _historical_metadata(lat, lon, lead_hours)
 
     return {
         "location": {
@@ -200,8 +256,12 @@ def generate_weights(
             "lon": lon,
         },
         "lead_hours": lead_hours,
-        "weights": result["weights"],
-        "regime": result["regime"],
+        "weights": {
+            "gfs": weights["gfs"],
+            "gefs": weights["gefs"],
+            "baseline": 0.0,
+        },
+        "regime": classify_regime(values["rainfall"]),
     }
 
 
@@ -211,11 +271,14 @@ def generate_extremes(
     lead_hours: int,
 ) -> Dict[str, object]:
 
-    result = generate_forecast(
-        lat=lat,
-        lon=lon,
-        lead_hours=lead_hours,
-        variable="temperature",
+    _, values = _historical_metadata(lat, lon, lead_hours)
+    extremes = detect_extremes(
+        precipitation_mm=values["rainfall"],
+        temperature_c=values["temperature"],
+        wind_speed_ms=values["wind_speed"],
     )
 
-    return result["extremes"]
+    return {
+        **extremes,
+        "risk_level": _risk_level(extremes),
+    }

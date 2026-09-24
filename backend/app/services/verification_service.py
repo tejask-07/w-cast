@@ -5,6 +5,8 @@ import json
 import numpy as np
 
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
 
 VARIABLE_MAP = {
@@ -121,7 +123,7 @@ def generate_verification(
     city = _nearest_city(lat, lon)
     internal_variable = VARIABLE_MAP[variable]
 
-    history_path = Path("data/processed/history_2d.json")
+    history_path = REPO_ROOT / "data" / "processed" / "history_2d.json"
 
     if not history_path.exists():
         raise FileNotFoundError(
