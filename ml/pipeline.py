@@ -54,7 +54,7 @@ def generate_forecast(
     variable: str,
     gfs_file_path: str | Path | dict | None = None,
     gefs_file_paths: dict | None = None,
-    history_path: str | Path = "data/processed/history_2d.json",
+    history_path: str | Path = "data/processed/history_7d_multilead.json",
 ) -> dict[str, Any]:
 
     if variable not in FIELDS:
@@ -111,7 +111,9 @@ def generate_forecast(
             historical_skill[name] = {
                 "gfs_mae": skill["gfs_mae"],
                 "gefs_mae": skill["gefs_mae"],
-                "sample_count": skill["sample_count"],
+                "gfs_sample_count": skill["gfs_sample_count"],
+                "gefs_sample_count": skill["gefs_sample_count"],
+                "source": skill["source"],
             }
 
         blended[name] = float(

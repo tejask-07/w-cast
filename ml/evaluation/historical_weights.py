@@ -1,22 +1,30 @@
 import json
-from pathlib import Path
 
 from ml.blending.adaptive_weights import adaptive_weights
 
 
-def load_history(path="data/processed/history_2d.json"):
+DEFAULT_HISTORY = "data/processed/history_7d_multilead.json"
+MIN_LOCAL_SAMPLES = 3
+
+
+def load_history(path=DEFAULT_HISTORY):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)["records"]
 
 
-def build_historical_weights(path="data/processed/history_2d.json"):
+def _mae(values):
+    return sum(values) / len(values) if values else None
+
+
+def build_historical_weights(path=DEFAULT_HISTORY):
     records = load_history(path)
 
-    groups = {}
+    local = {}
+    broader = {}
 
     for r in records:
-        if r["gfs_absolute_error"] is None or r["gefs_absolute_error"] is None:
-            continue
+        gfs_error = r.get("gfs_absolute_error")
+        gefs_error = r.get("gefs_absolute_error")
 
         key = (
             r["city"],
@@ -24,16 +32,43 @@ def build_historical_weights(path="data/processed/history_2d.json"):
             r["lead_hours"],
         )
 
-        groups.setdefault(key, {"gfs": [], "gefs": []})
+        broad_key = (
+            r["variable"],
+            r["lead_hours"],
+        )
 
-        groups[key]["gfs"].append(r["gfs_absolute_error"])
-        groups[key]["gefs"].append(r["gefs_absolute_error"])
+        local.setdefault(key, {"gfs": [], "gefs": []})
+        broader.setdefault(broad_key, {"gfs": [], "gefs": []})
+
+        if gfs_error is not None:
+            local[key]["gfs"].append(gfs_error)
+            broader[broad_key]["gfs"].append(gfs_error)
+
+        if gefs_error is not None:
+            local[key]["gefs"].append(gefs_error)
+            broader[broad_key]["gefs"].append(gefs_error)
 
     result = {}
 
-    for (city, variable, lead_hours), errors in groups.items():
-        gfs_mae = sum(errors["gfs"]) / len(errors["gfs"])
-        gefs_mae = sum(errors["gefs"]) / len(errors["gefs"])
+    for (city, variable, lead_hours), errors in local.items():
+        gfs_errors = errors["gfs"]
+        gefs_errors = errors["gefs"]
+
+        if (
+            len(gfs_errors) >= MIN_LOCAL_SAMPLES
+            and len(gefs_errors) >= MIN_LOCAL_SAMPLES
+        ):
+            skill = errors
+            source = "local"
+        else:
+            skill = broader[(variable, lead_hours)]
+            source = "broader"
+
+        gfs_mae = _mae(skill["gfs"])
+        gefs_mae = _mae(skill["gefs"])
+
+        if gfs_mae is None and gefs_mae is None:
+            continue
 
         weights = adaptive_weights({
             "gfs": gfs_mae,
@@ -46,7 +81,9 @@ def build_historical_weights(path="data/processed/history_2d.json"):
             "weights": weights,
             "gfs_mae": gfs_mae,
             "gefs_mae": gefs_mae,
-            "sample_count": len(errors["gfs"]),
+            "gfs_sample_count": len(skill["gfs"]),
+            "gefs_sample_count": len(skill["gefs"]),
+            "source": source,
         }
 
     return result
@@ -54,5 +91,4 @@ def build_historical_weights(path="data/processed/history_2d.json"):
 
 if __name__ == "__main__":
     weights = build_historical_weights()
-
     print(json.dumps(weights, indent=2))
