@@ -20,3 +20,6 @@ check_gfs_files.py
 inspect_gfs.py
 gfs_directory.html
 test_gfs.py
+
+# Runtime/downloaded GFS data
+backend/data/
