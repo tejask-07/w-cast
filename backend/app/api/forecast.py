@@ -38,6 +38,12 @@ def get_forecast(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    if lead_hours not in (24, 48, 72):
+        raise HTTPException(
+            status_code=422,
+            detail="lead_hours must be one of: 24, 48, 72",
+        )
+
     try:
         return generate_forecast(lat=lat, lon=lon, lead_hours=lead_hours, variable=variable)
     except Exception as exc:  # pragma: no cover - service boundary failsafe

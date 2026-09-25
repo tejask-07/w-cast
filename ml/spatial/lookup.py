@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_WEIGHT_MAP = "data/processed/india_weight_map_7d.json"
+DEFAULT_WEIGHT_MAP = (
+    Path(__file__).resolve().parents[2]
+    / "data"
+    / "processed"
+    / "india_weight_map_7d.json"
+)
 
 
 def load_weight_map(
