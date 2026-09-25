@@ -9,8 +9,13 @@ from app.services.gfs_forecast_service import (
 )
 
 from ml.pipeline import generate_forecast as generate_forecast_ml
+from ml.spatial.india_grid import is_in_india
 from ml.spatial.lookup import get_spatial_weights
-from ml.preprocessing.download import download_gfs_subsets
+from ml.preprocessing.download import (
+    GFSDownloadError,
+    GFS_SUBSET_SEARCHES,
+    download_gfs_subsets,
+)
 from ml.preprocessing.gefs import download_gefs_subsets
 from ml.regimes.classifier import classify_regime
 from ml.regimes.extremes import detect_extremes
@@ -22,7 +27,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 WEIGHT_MAP_PATH = REPO_ROOT / "data" / "processed" / "india_weight_map_7d.json"
 
 
-def resolve_location_name(lat: float, lon: float) -> str:
+def resolve_location_name(lat: float, lon: float) -> str | None:
+    if not is_in_india(lat, lon):
+        return None
+
     locations = {
         "Mumbai": (19.0760, 72.8777),
         "Delhi": (28.6139, 77.2090),
@@ -62,6 +70,9 @@ def _download_forecast_sources(lead_hours: int):
     now = datetime.now(timezone.utc)
 
     cycles = [18, 12, 6, 0]
+    attempted_cycles: list[str] = []
+    cycle_failures: list[dict[str, object]] = []
+    required_gfs_subsets = set(GFS_SUBSET_SEARCHES)
 
     for cycle in cycles:
         cycle_time = now.replace(
@@ -80,6 +91,8 @@ def _download_forecast_sources(lead_hours: int):
             f"Trying forecast cycle: "
             f"{cycle_time.strftime('%Y-%m-%d %H:%M UTC')}"
         )
+        cycle_label = cycle_time.strftime('%Y-%m-%d %H:%M UTC')
+        attempted_cycles.append(cycle_label)
 
         try:
             gfs_paths = download_gfs_subsets(
@@ -87,6 +100,17 @@ def _download_forecast_sources(lead_hours: int):
                 forecast_hour=lead_hours,
                 save_dir="data/raw/gfs",
             )
+
+            missing_gfs_subsets = sorted(
+                required_gfs_subsets - set(gfs_paths)
+            )
+            if missing_gfs_subsets:
+                raise GFSDownloadError(
+                    f"GFS cycle missing required subsets: "
+                    f"{', '.join(missing_gfs_subsets)}",
+                    getattr(gfs_paths, "source_failures", []),
+                    missing_gfs_subsets,
+                )
 
             gefs_paths = download_gefs_subsets(
                 date=cycle_time,
@@ -102,14 +126,44 @@ def _download_forecast_sources(lead_hours: int):
             return gfs_paths, gefs_paths
 
         except Exception as exc:
+            failures = getattr(exc, "source_failures", None)
+            if failures:
+                cycle_failures.extend(
+                    {
+                        "cycle": cycle_label,
+                        **failure,
+                    }
+                    for failure in failures
+                )
+            else:
+                cycle_failures.append(
+                    {
+                        "cycle": cycle_label,
+                        "source": "cycle",
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    }
+                )
             print(
                 f"Cycle unavailable: "
-                f"{cycle_time.strftime('%Y-%m-%d %H:%M UTC')} "
+                f"{cycle_label} "
                 f"({exc})"
             )
 
-    raise RuntimeError(
-        "No available GFS and GEFS forecast cycle found."
+    failure_summary = "; ".join(
+        f"{failure['cycle']} {failure.get('subset', 'cycle')}/"
+        f"{failure.get('source', 'unknown')}: {failure['reason']}"
+        for failure in cycle_failures
+    )
+    message = (
+        f"GFS download failed for F{lead_hours:03d}. "
+        f"Tried cycles: {', '.join(attempted_cycles)}. "
+        f"Failures: {failure_summary}"
+    )
+    print(message)
+    raise GFSDownloadError(
+        message,
+        cycle_failures,
+        sorted(required_gfs_subsets),
     )
 
 
@@ -178,6 +232,11 @@ def generate_forecast(
             "baseline": 0.0,
         },
         "regime": result["regime"],
+        "model_source": (
+            "W-CAST (Adaptive)"
+            if is_in_india(lat, lon)
+            else "Global GFS + GEFS"
+        ),
         "extremes": {
             **result["extremes"],
             "risk_level": _risk_level(result["extremes"]),

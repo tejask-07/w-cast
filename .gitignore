@@ -25,3 +25,6 @@ test_gfs.py
 backend/data/
 
 data/interim/forecast_maps/
+
+# Generated forecast download/cache data
+/frontend/data/

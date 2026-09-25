@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ml.spatial.india_grid import is_in_india
+
 
 DEFAULT_WEIGHT_MAP = (
     Path(__file__).resolve().parents[2]
@@ -56,6 +58,19 @@ def get_spatial_weights(
     lead_hours: int,
     path: str | Path = DEFAULT_WEIGHT_MAP,
 ) -> dict[str, Any]:
+
+    if not is_in_india(latitude, longitude):
+        return {
+            "latitude": latitude,
+            "longitude": longitude,
+            "region": "global",
+            "skill_source": "global_baseline",
+            "weights": {"gfs": 0.5, "gefs": 0.5},
+            "gfs_mae": None,
+            "gefs_mae": None,
+            "gfs_sample_count": 0,
+            "gefs_sample_count": 0,
+        }
 
     weight_map = load_weight_map(path)
 

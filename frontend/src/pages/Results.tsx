@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   CartesianGrid,
@@ -30,10 +30,63 @@ type ForecastRequest = {
     lat: number
     lon: number
   }
-  aoi: AOI
+  aoi: AOI | null
   variable: ForecastVariable
   lead_hours: number
   forecast: ForecastResponse
+}
+
+type SeriesPoint = { hour: number; value: number | null }
+
+const hourlyMetricConfig: Record<ForecastVariable, {
+  label: string
+  unit: string
+}> = {
+  temperature: { label: 'TEMPERATURE', unit: '°C' },
+  wind_speed: { label: 'WIND SPEED', unit: 'm/s' },
+  rainfall: { label: 'PRECIPITATION', unit: 'mm' },
+}
+
+function seriesStats(points: SeriesPoint[]) {
+  const values = points
+    .map((point) => point.value)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  if (!values.length) return null
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+    total: values.reduce((sum, value) => sum + value, 0),
+  }
+}
+
+function trendFor(points: SeriesPoint[]) {
+  const validPoints = points.filter(
+    (point): point is { hour: number; value: number } =>
+      typeof point.value === 'number' && Number.isFinite(point.value),
+  )
+  if (validPoints.length < 2) return 'HOURLY SERIES UNAVAILABLE'
+  const difference = validPoints[validPoints.length - 1].value - validPoints[0].value
+  const tolerance = Math.max(0.05, Math.abs(validPoints[0].value) * 0.01)
+  if (difference > tolerance) return 'INCREASING'
+  if (difference < -tolerance) return 'DECREASING'
+  return 'RELATIVELY STABLE'
+}
+
+function Sparkline({ points }: { points: SeriesPoint[] }) {
+  const validPoints = points.filter(
+    (point): point is { hour: number; value: number } =>
+      typeof point.value === 'number' && Number.isFinite(point.value),
+  )
+  if (validPoints.length < 2) return <div className="sparkline-empty">SELECTED SERIES ONLY</div>
+  const values = validPoints.map((point) => point.value)
+  const min = Math.min(...values)
+  const range = Math.max(...values) - min || 1
+  const path = validPoints.map((point, index) => {
+    const x = (index / (validPoints.length - 1)) * 100
+    const y = 30 - ((point.value - min) / range) * 24
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`
+  }).join(' ')
+  return <svg className="metric-sparkline" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" /></svg>
 }
 
 function Results() {
@@ -45,20 +98,28 @@ function Results() {
 
   const {
     hourlyData,
+    hourlyDataByVariable,
     hourlyLoading,
     hourlyError,
     fetchHourlyForecast,
   } = useForecast()
 
+  const [selectedHourlyMetric, setSelectedHourlyMetric] =
+    useState<ForecastVariable>('temperature')
+
   useEffect(() => {
     if (!request?.forecast) return
 
-    void fetchHourlyForecast({
-      lat: request.location.lat,
-      lon: request.location.lon,
-      lead_hours: request.lead_hours,
-      variable: request.variable,
-    }).catch(() => undefined)
+    void Promise.all(
+      (['temperature', 'rainfall', 'wind_speed'] as ForecastVariable[]).map((variable) =>
+        fetchHourlyForecast({
+          lat: request.location.lat,
+          lon: request.location.lon,
+          lead_hours: request.lead_hours,
+          variable,
+        }),
+      ),
+    ).catch(() => undefined)
   }, [
     fetchHourlyForecast,
     request?.forecast,
@@ -120,6 +181,15 @@ function Results() {
   }
 
   const forecast = request.forecast
+  const hourlyPoints = hourlyDataByVariable[request.variable]?.points ?? hourlyData?.points ?? []
+  const precipitationPoints = hourlyDataByVariable.rainfall?.points ?? []
+  const windPoints = hourlyDataByVariable.wind_speed?.points ?? []
+  const temperaturePoints = hourlyDataByVariable.temperature?.points ?? []
+  const hourlyStats = seriesStats(hourlyPoints)
+  const selectedMetric = hourlyMetricConfig[selectedHourlyMetric]
+  const selectedHourlyData = hourlyDataByVariable[selectedHourlyMetric]
+    ?? (hourlyData?.variable === selectedHourlyMetric ? hourlyData : undefined)
+  const selectedUnit = selectedHourlyData?.unit ?? selectedMetric.unit
   const variableLabel = request.variable === 'wind_speed'
     ? 'WIND SPEED'
     : request.variable.toUpperCase()
@@ -220,7 +290,7 @@ function Results() {
             </span>
 
             <strong>
-              CUSTOM REGION
+              {request.aoi ? 'CUSTOM REGION' : 'SELECTED LOCATION'}
             </strong>
 
           </div>
@@ -272,7 +342,7 @@ function Results() {
             <div>
               <span>MODEL BLEND</span>
               <strong>
-                W-CAST (Adaptive)
+                {forecast.model_source ?? 'W-CAST (Adaptive)'}
               </strong>
             </div>
 
@@ -318,7 +388,7 @@ function Results() {
                   city={request.location.name}
                   leadHours={request.lead_hours}
                   variable={request.variable}
-                  aoi={request.aoi}
+                  aoi={request.aoi ?? undefined}
                   initialZoom={9}
                   showChrome={false}
                   satellite
@@ -331,30 +401,32 @@ function Results() {
                   </strong>
 
                   <span>
-                    AOI / CUSTOM REGION
+                    {request.aoi ? 'AOI / CUSTOM REGION' : 'SELECTED LOCATION'}
                   </span>
 
                 </div>
 
-                <div className="results-map-coordinates">
+                {request.aoi && (
+                  <div className="results-map-coordinates">
 
-                  <span>
-                    N {request.aoi.north.toFixed(4)}°
-                  </span>
+                    <span>
+                      N {request.aoi.north.toFixed(4)}°
+                    </span>
 
-                  <span>
-                    S {request.aoi.south.toFixed(4)}°
-                  </span>
+                    <span>
+                      S {request.aoi.south.toFixed(4)}°
+                    </span>
 
-                  <span>
-                    W {request.aoi.west.toFixed(4)}°
-                  </span>
+                    <span>
+                      W {request.aoi.west.toFixed(4)}°
+                    </span>
 
-                  <span>
-                    E {request.aoi.east.toFixed(4)}°
-                  </span>
+                    <span>
+                      E {request.aoi.east.toFixed(4)}°
+                    </span>
 
-                </div>
+                  </div>
+                )}
 
               </div>
 
@@ -452,18 +524,31 @@ function Results() {
 
             <div className="chart-heading">
 
-              <strong>
-                HOURLY FORECAST
-                {' '}
-                (NEXT {request.lead_hours} HOURS)
-              </strong>
+              <div className="hourly-chart-title">
+                <strong>
+                  HOURLY FORECAST
+                  {' '}
+                  (NEXT {request.lead_hours} HOURS)
+                </strong>
+
+                <div className="hourly-metric-selector" role="tablist" aria-label="Hourly forecast metric">
+                  {(['temperature', 'wind_speed', 'rainfall'] as ForecastVariable[]).map((metric) => (
+                    <button
+                      key={metric}
+                      type="button"
+                      className={selectedHourlyMetric === metric ? 'active' : ''}
+                      role="tab"
+                      aria-selected={selectedHourlyMetric === metric}
+                      onClick={() => setSelectedHourlyMetric(metric)}
+                    >
+                      {hourlyMetricConfig[metric].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <span>
-                [ {request.variable === 'temperature'
-                  ? '°C'
-                  : request.variable === 'rainfall'
-                    ? 'mm'
-                    : 'm/s'} ]
+                [ {selectedMetric.unit} ]
               </span>
 
             </div>
@@ -477,20 +562,20 @@ function Results() {
                 <div className="chart-state">HOURLY FORECAST UNAVAILABLE</div>
               )}
 
-              {!hourlyLoading && !hourlyError && hourlyData && (
+              {!hourlyLoading && !hourlyError && selectedHourlyData && (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={hourlyData.points} margin={{ top: 12, right: 12, bottom: 6, left: 0 }}>
+                  <LineChart data={selectedHourlyData.points} margin={{ top: 12, right: 12, bottom: 6, left: 0 }}>
                     <CartesianGrid stroke="#dddddd" strokeDasharray="2 3" />
                     <XAxis
                       dataKey="hour"
-                      tick={{ fontSize: 8, fill: '#777' }}
+                      tick={{ fontSize: 11, fill: '#777' }}
                       tickLine={false}
                       axisLine={{ stroke: '#999' }}
                       tickFormatter={(hour: number) => `${hour}H`}
-                      interval={Math.max(0, Math.ceil(hourlyData.points.length / 8) - 1)}
+                      interval={Math.max(0, Math.ceil(selectedHourlyData.points.length / 8) - 1)}
                     />
                     <YAxis
-                      tick={{ fontSize: 8, fill: '#777' }}
+                      tick={{ fontSize: 11, fill: '#777' }}
                       tickLine={false}
                       axisLine={{ stroke: '#999' }}
                       width={42}
@@ -501,13 +586,18 @@ function Results() {
                         border: '1px solid #111',
                         borderRadius: 0,
                         fontFamily: 'inherit',
-                        fontSize: 10,
+                        fontSize: 11,
                       }}
+                      formatter={(value) => [
+                        `${typeof value === 'number' ? value.toFixed(2) : value} ${selectedUnit}`,
+                        selectedMetric.label,
+                      ]}
+                      labelFormatter={(hour) => `${hour}H`}
                     />
                     <Line
                       type="monotone"
                       dataKey="value"
-                      name={variableLabel}
+                      name={selectedMetric.label}
                       stroke="#111111"
                       strokeWidth={1.5}
                       dot={{ r: 2, fill: '#111111' }}
@@ -518,6 +608,35 @@ function Results() {
               )}
             </div>
 
+          </section>
+
+          <section className="summary-section">
+            <div className="chart-heading">
+              <strong>24-HOUR SUMMARY</strong>
+              <span>[ REAL DATA ]</span>
+            </div>
+            <div className="summary-grid">
+              <div className="summary-item">
+                <span>TEMPERATURE</span>
+                <strong>{request.variable === 'temperature' && hourlyStats ? `${hourlyStats.min.toFixed(1)} → ${hourlyStats.max.toFixed(1)} °C` : `${forecast.forecast.temperature.toFixed(1)} °C`}</strong>
+                <small>{request.variable === 'temperature' ? 'HOURLY MIN → MAX' : 'POINT FORECAST'}</small>
+              </div>
+              <div className="summary-item">
+                <span>PRECIPITATION</span>
+                <strong>{request.variable === 'rainfall' && hourlyStats ? `${hourlyStats.total.toFixed(1)} mm` : `${forecast.forecast.rainfall.toFixed(1)} mm`}</strong>
+                <small>{request.variable === 'rainfall' ? 'HOURLY TOTAL' : 'POINT FORECAST'}</small>
+              </div>
+              <div className="summary-item">
+                <span>WIND</span>
+                <strong>{request.variable === 'wind_speed' && hourlyStats ? `${hourlyStats.max.toFixed(1)} m/s` : `${forecast.forecast.wind_speed.toFixed(1)} m/s`}</strong>
+                <small>{request.variable === 'wind_speed' ? 'HOURLY MAXIMUM' : 'POINT FORECAST'}</small>
+              </div>
+              <div className="summary-item">
+                <span>RISK</span>
+                <strong>{forecast.extremes.risk_level.toUpperCase()}</strong>
+                <small>{forecast.regime} REGIME</small>
+              </div>
+            </div>
           </section>
 
           {/* ============================================= */}
@@ -538,8 +657,9 @@ function Results() {
                 </span>
               </div>
 
-              <div className="metric-unavailable">
-                {forecast.forecast.rainfall.toFixed(2)} mm
+              <div className="metric-content">
+                <Sparkline points={precipitationPoints} />
+                <strong>{forecast.forecast.rainfall.toFixed(2)} mm TOTAL</strong>
               </div>
 
             </section>
@@ -556,8 +676,9 @@ function Results() {
                 </span>
               </div>
 
-              <div className="metric-unavailable">
-                {(forecast.forecast.wind_speed * 3.6).toFixed(2)} km/h
+              <div className="metric-content">
+                <Sparkline points={windPoints} />
+                <strong>{forecast.forecast.wind_speed.toFixed(2)} m/s MAX</strong>
               </div>
 
             </section>
@@ -574,8 +695,13 @@ function Results() {
                 </span>
               </div>
 
-              <div className="metric-unavailable">
-                {forecast.forecast.temperature.toFixed(2)} °C
+              <div className="metric-content">
+                <Sparkline points={temperaturePoints} />
+                <strong>
+                  {seriesStats(temperaturePoints)
+                    ? `${seriesStats(temperaturePoints)!.min.toFixed(2)} → ${seriesStats(temperaturePoints)!.max.toFixed(2)} °C`
+                    : `${forecast.forecast.temperature.toFixed(2)} °C`}
+                </strong>
               </div>
 
             </section>
@@ -652,24 +778,12 @@ function Results() {
 
               </div>
 
-              <div className="insight-empty">
-
-                <span>
-                  —
-                </span>
-
-                <p>
-                  REGIME: {forecast.regime}
-                  <br />
-                  HEAVY RAIN: {forecast.extremes.heavy_rain ? 'YES' : 'NO'}
-                  <br />
-                  HEAT WAVE: {forecast.extremes.heat_wave ? 'YES' : 'NO'}
-                  <br />
-                  HIGH WIND: {forecast.extremes.high_wind ? 'YES' : 'NO'}
-                  <br />
-                  RISK: {forecast.extremes.risk_level.toUpperCase()}
-                </p>
-
+              <div className="insight-content">
+                <div><span>REGIME</span><strong>{forecast.regime}</strong></div>
+                <div><span>TEMPERATURE TREND</span><strong>{trendFor(request.variable === 'temperature' ? hourlyPoints : [])}</strong></div>
+                <div><span>PRECIPITATION SUMMARY</span><strong>{request.variable === 'rainfall' && hourlyStats ? `${hourlyStats.total.toFixed(1)} mm TOTAL` : `${forecast.forecast.rainfall.toFixed(1)} mm POINT`}</strong></div>
+                <div><span>WIND SUMMARY</span><strong>{request.variable === 'wind_speed' && hourlyStats ? `${hourlyStats.max.toFixed(1)} m/s MAX` : `${forecast.forecast.wind_speed.toFixed(1)} m/s POINT`}</strong></div>
+                <div><span>EXTREME CONDITIONS</span><strong>{forecast.extremes.heavy_rain ? 'HEAVY RAIN' : forecast.extremes.heat_wave ? 'HEAT WAVE' : forecast.extremes.high_wind ? 'HIGH WIND' : 'NONE FLAGGED'}</strong></div>
               </div>
 
             </section>
@@ -687,15 +801,13 @@ function Results() {
               </div>
 
               <div className="model-detail-title">
-                W-CAST (Adaptive)
+                {forecast.model_source ?? 'W-CAST (Adaptive)'}
               </div>
 
               <p>
-                Adaptive forecast blending using
-                <br />
-                dynamically determined model
-                <br />
-                weights.
+                {forecast.model_source === 'Global GFS + GEFS'
+                  ? 'Global GFS + GEFS baseline forecast.'
+                  : <>Adaptive forecast blending using<br />dynamically determined model<br />weights.</>}
               </p>
 
               <i />

@@ -53,6 +53,7 @@ class ForecastResponse(BaseModel):
     forecast: ForecastValues
     weights: ModelWeights
     regime: str
+    model_source: str = "W-CAST (Adaptive)"
     extremes: Extremes
 
 

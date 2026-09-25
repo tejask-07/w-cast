@@ -16,15 +16,10 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { useNavigate } from 'react-router-dom'
 
 import { useForecast } from '../hooks/useForecast'
-import type { ForecastVariable } from '../types/forecast'
+import { searchLocations } from '../services/geocoding'
+import type { ForecastLocation, ForecastVariable } from '../types/forecast'
 
 import './Forecast.css'
-
-type City = {
-  name: string
-  lat: number
-  lon: number
-}
 
 type AOI = {
   north: number
@@ -49,30 +44,10 @@ type GeomanMap = LeafletMap & {
   }
 }
 
-const cities: Record<string, City> = {
-  Mumbai: {
-    name: 'Mumbai, Maharashtra',
-    lat: 19.076,
-    lon: 72.8777,
-  },
-
-  Delhi: {
-    name: 'Delhi, India',
-    lat: 28.6139,
-    lon: 77.209,
-  },
-
-  Kolkata: {
-    name: 'Kolkata, West Bengal',
-    lat: 22.5726,
-    lon: 88.3639,
-  },
-
-  Chennai: {
-    name: 'Chennai, Tamil Nadu',
-    lat: 13.0827,
-    lon: 80.2707,
-  },
+const defaultLocation: ForecastLocation = {
+  name: 'SELECT A LOCATION',
+  lat: 20.5937,
+  lon: 78.9629,
 }
 
 /* ================================================= */
@@ -97,12 +72,12 @@ function getAOI(
 /* ================================================= */
 
 function MapController({
-  city,
+  location,
   startDrawing,
   onAOIChange,
   onDrawingChange,
 }: {
-  city: City
+  location: ForecastLocation
   startDrawing: number
   onAOIChange: (aoi: AOI | null) => void
   onDrawingChange: (drawing: boolean) => void
@@ -119,12 +94,11 @@ function MapController({
   }, [map])
 
   /* --------------------------------------------- */
-  /* CITY CHANGE                                   */
-  /* --------------------------------------------- */
+  /* LOCATION CHANGE                               */
 
   useEffect(() => {
     map.flyTo(
-      [city.lat, city.lon],
+      [location.lat, location.lon],
       9,
       {
         duration: 0.7,
@@ -142,7 +116,7 @@ function MapController({
     onAOIChange(null)
     onDrawingChange(false)
   }, [
-    city,
+    location,
     map,
     onAOIChange,
     onDrawingChange,
@@ -335,9 +309,34 @@ function Forecast() {
   const navigate = useNavigate()
 
   const [
-    selectedCity,
-    setSelectedCity,
-  ] = useState('Mumbai')
+    selectedLocation,
+    setSelectedLocation,
+  ] = useState<ForecastLocation | null>(null)
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState('')
+
+  const [
+    locationSuggestions,
+    setLocationSuggestions,
+  ] = useState<ForecastLocation[]>([])
+
+  const [
+    searchingLocations,
+    setSearchingLocations,
+  ] = useState(false)
+
+  const [
+    locationSearchError,
+    setLocationSearchError,
+  ] = useState(false)
+
+  const [
+    locationSelected,
+    setLocationSelected,
+  ] = useState(false)
 
   const [
     variable,
@@ -370,7 +369,54 @@ function Forecast() {
     fetchForecast,
   } = useForecast()
 
-  const city = cities[selectedCity]
+  const searchRequest = useRef(0)
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+
+    if (locationSelected || query.length < 2) {
+      return
+    }
+
+    const requestId = searchRequest.current + 1
+    searchRequest.current = requestId
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => {
+      setSearchingLocations(true)
+      setLocationSearchError(false)
+
+      void searchLocations(query, controller.signal)
+        .then((results) => {
+          if (requestId !== searchRequest.current) return
+          setLocationSuggestions(results)
+        })
+        .catch(() => {
+          if (controller.signal.aborted || requestId !== searchRequest.current) return
+          setLocationSuggestions([])
+          setLocationSearchError(true)
+        })
+        .finally(() => {
+          if (requestId === searchRequest.current) {
+            setSearchingLocations(false)
+          }
+        })
+    }, 350)
+
+    return () => {
+      window.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [locationSelected, searchQuery])
+
+  const mapLocation = selectedLocation ?? defaultLocation
+
+  const forecastLocation = aoi
+    ? {
+      name: 'AOI CENTER',
+      lat: (aoi.south + aoi.north) / 2,
+      lon: (aoi.west + aoi.east) / 2,
+    }
+    : selectedLocation
 
   const selectAOI = () => {
     setAoi(null)
@@ -380,22 +426,37 @@ function Forecast() {
     )
   }
 
-  const handleCityChange = (
-    cityName: string,
+  const handleSearchChange = (
+    value: string,
   ) => {
-    setSelectedCity(cityName)
+    setSearchQuery(value)
+    setLocationSelected(false)
+    setSelectedLocation(null)
+    setLocationSuggestions([])
+    setSearchingLocations(false)
+    setAoi(null)
+    setDrawingAOI(false)
+    setLocationSearchError(false)
+  }
 
+  const handleLocationSelect = (
+    location: ForecastLocation,
+  ) => {
+    setSelectedLocation(location)
+    setSearchQuery(location.name ?? '')
+    setLocationSuggestions([])
+    setLocationSelected(true)
     setAoi(null)
     setDrawingAOI(false)
   }
 
   const generateForecast = async () => {
-    if (!aoi) return
+    if (!forecastLocation) return
 
     try {
       const forecast = await fetchForecast({
-        lat: city.lat,
-        lon: city.lon,
+        lat: forecastLocation.lat,
+        lon: forecastLocation.lon,
         lead_hours: leadTime,
         variable,
       })
@@ -403,9 +464,9 @@ function Forecast() {
       navigate('/forecast/results', {
         state: {
           location: {
-            name: city.name,
-            lat: city.lat,
-            lon: city.lon,
+            name: forecastLocation.name,
+            lat: forecastLocation.lat,
+            lon: forecastLocation.lon,
           },
           aoi,
           variable,
@@ -473,34 +534,71 @@ function Forecast() {
               LOCATION
             </div>
 
-            <select
-              value={selectedCity}
-              onChange={(event) =>
-                handleCityChange(
-                  event.target.value,
-                )
-              }
-            >
-              {Object.entries(cities).map(
-                ([key, value]) => (
-                  <option
-                    key={key}
-                    value={key}
-                  >
-                    {value.name}
-                  </option>
-                ),
+            <div className="location-search">
+
+              <input
+                type="search"
+                value={searchQuery}
+                placeholder="SEARCH LOCATION"
+                aria-label="Search location"
+                onChange={(event) =>
+                  handleSearchChange(event.target.value)
+                }
+              />
+
+              {!locationSelected && searchQuery.trim().length >= 2 && (
+                <div
+                  className="location-suggestions"
+                  role="listbox"
+                >
+                  {searchingLocations && (
+                    <div className="location-search-state">
+                      SEARCHING LOCATIONS
+                    </div>
+                  )}
+
+                  {!searchingLocations && locationSearchError && (
+                    <div className="location-search-state">
+                      LOCATION SEARCH UNAVAILABLE
+                    </div>
+                  )}
+
+                  {!searchingLocations
+                    && !locationSearchError
+                    && locationSuggestions.length === 0 && (
+                    <div className="location-search-state">
+                      NO LOCATIONS FOUND
+                    </div>
+                  )}
+
+                  {locationSuggestions.map((location) => (
+                    <button
+                      type="button"
+                      className="location-suggestion"
+                      role="option"
+                      key={`${location.name}-${location.lat}-${location.lon}`}
+                      onClick={() => handleLocationSelect(location)}
+                    >
+                      {location.name}
+                    </button>
+                  ))}
+                </div>
               )}
-            </select>
+
+            </div>
 
             <div className="location-coordinates">
 
               <span>
-                {city.lat.toFixed(4)}° N
+                {selectedLocation
+                  ? `${selectedLocation.lat.toFixed(4)}° N`
+                  : '—'}
               </span>
 
               <span>
-                {city.lon.toFixed(4)}° E
+                {selectedLocation
+                  ? `${selectedLocation.lon.toFixed(4)}° E`
+                  : '—'}
               </span>
 
             </div>
@@ -685,7 +783,7 @@ function Forecast() {
           <button
             type="button"
             className="generate-button"
-            disabled={!aoi || loading}
+            disabled={!selectedLocation || loading}
             onClick={generateForecast}
           >
             <span>→</span>
@@ -719,7 +817,7 @@ function Forecast() {
               </span>
 
               <strong>
-                {city.name.toUpperCase()}
+                {(mapLocation.name ?? 'SELECT A LOCATION').toUpperCase()}
               </strong>
 
             </div>
@@ -794,8 +892,8 @@ function Forecast() {
 
             <MapContainer
               center={[
-                city.lat,
-                city.lon,
+                mapLocation.lat,
+                mapLocation.lon,
               ]}
               zoom={9}
               scrollWheelZoom
@@ -810,7 +908,7 @@ function Forecast() {
               />
 
               <MapController
-                city={city}
+                location={mapLocation}
                 startDrawing={drawRequest}
                 onAOIChange={setAoi}
                 onDrawingChange={
@@ -843,13 +941,13 @@ function Forecast() {
             <div className="map-location">
 
               <strong>
-                {city.name.toUpperCase()}
+                {(mapLocation.name ?? 'SELECT A LOCATION').toUpperCase()}
               </strong>
 
               <span>
-                {city.lat.toFixed(4)}° N
+                {mapLocation.lat.toFixed(4)}° N
                 &nbsp;&nbsp;
-                {city.lon.toFixed(4)}° E
+                {mapLocation.lon.toFixed(4)}° E
               </span>
 
             </div>

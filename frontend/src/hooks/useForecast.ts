@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { getForecast, getForecastMap, getHourlyForecast } from '../services/api'
 import type {
 	ForecastQuery,
+	ForecastVariable,
 	ForecastResponse,
 	HourlyForecastResponse,
 	SpatialForecastQuery,
@@ -17,6 +18,7 @@ export function useForecast() {
 	const [mapLoading, setMapLoading] = useState(false)
 	const [mapError, setMapError] = useState<string | null>(null)
 	const [hourlyData, setHourlyData] = useState<HourlyForecastResponse | null>(null)
+	const [hourlyDataByVariable, setHourlyDataByVariable] = useState<Partial<Record<ForecastVariable, HourlyForecastResponse>>>({})
 	const [hourlyLoading, setHourlyLoading] = useState(false)
 	const [hourlyError, setHourlyError] = useState<string | null>(null)
 
@@ -56,10 +58,10 @@ export function useForecast() {
 	const fetchHourlyForecast = useCallback(async (params: ForecastQuery) => {
 		setHourlyLoading(true)
 		setHourlyError(null)
-		setHourlyData(null)
 		try {
 			const result = await getHourlyForecast(params)
 			setHourlyData(result)
+			setHourlyDataByVariable((current) => ({ ...current, [params.variable]: result }))
 			return result
 		} catch (caught) {
 			const message = caught instanceof Error ? caught.message : 'Unable to load the hourly forecast.'
@@ -80,6 +82,7 @@ export function useForecast() {
 		mapError,
 		fetchForecastMap,
 		hourlyData,
+		hourlyDataByVariable,
 		hourlyLoading,
 		hourlyError,
 		fetchHourlyForecast,

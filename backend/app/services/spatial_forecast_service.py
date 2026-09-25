@@ -14,6 +14,7 @@ from app.services.forecast_service import (
 )
 from ml.blending.blender import blend_forecasts
 from ml.evaluation.historical_weights import build_historical_weights
+from ml.spatial.india_grid import is_in_india
 
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
 SUPPORTED_LEADS = (24, 48, 72)
@@ -214,6 +215,8 @@ def _interpolate_to_grid(
 
 
 def _weights(latitude: float, longitude: float, variable: str, lead_hours: int):
+    if not is_in_india(latitude, longitude):
+        return {"gfs": 0.5, "gefs": 0.5}
     city = resolve_location_name(latitude, longitude)
     internal_variable = "precipitation" if variable == "rainfall" else variable
     historical = build_historical_weights(HISTORY_PATH)

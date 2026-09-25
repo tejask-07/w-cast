@@ -31,6 +31,7 @@ export type ForecastResponse = {
 	forecast: ForecastValues
 	weights: ModelWeights
 	regime: string
+	model_source?: string
 	extremes: Extremes
 }
 
