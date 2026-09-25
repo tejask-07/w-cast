@@ -41,12 +41,19 @@ def _inventory_searches(forecast: Any) -> dict[str, str]:
             & (inventory["level"] == level)
             & inventory["search_this"].str.contains("ens mean", na=False)
         ]
-        if len(matches) != 1:
-            raise RuntimeError(
-                f"GEFS inventory did not provide exactly one ensemble-mean {name} field "
-                f"for {variable} at {level}; found {len(matches)}"
-            )
-        searches[name] = str(matches.iloc[0]["search_this"])
+        if len(matches) == 1:
+            searches[name] = str(matches.iloc[0]["search_this"])
+            continue
+
+        if name == "precipitation" and len(matches) == 0:
+            # APCP ensemble mean is not guaranteed to be present
+            # in this GEFS inventory/forecast hour.
+            continue
+
+        raise RuntimeError(
+            f"GEFS inventory did not provide exactly one ensemble-mean {name} field "
+            f"for {variable} at {level}; found {len(matches)}"
+        )
     return searches
 
 

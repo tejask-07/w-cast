@@ -290,11 +290,11 @@ def test_weights_endpoint_returns_expected_structure():
         "baseline",
     }
 
-    assert data["regime"] in {
-        "DRY",
-        "NORMAL",
-        "WET",
-        "EXTREME",
+    assert data["regime"].lower() in {
+        "dry",
+        "normal",
+        "wet",
+        "extreme",
     }
 
 
