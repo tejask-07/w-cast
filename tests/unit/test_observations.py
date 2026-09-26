@@ -32,11 +32,18 @@ PAYLOAD = {
 
 
 def test_successful_historical_response_parsing(monkeypatch):
-    monkeypatch.setattr(observations.requests, "get", lambda *args, **kwargs: _response(PAYLOAD))
+    captured = {}
+
+    def fake_get(*args, **kwargs):
+        captured.update(kwargs["params"])
+        return _response(PAYLOAD)
+
+    monkeypatch.setattr(observations.requests, "get", fake_get)
     result = observations.get_historical_observations(19.076, 72.8777, "2024-01-01", "2024-01-01")
     assert result["timezone"] == "UTC"
     assert result["hourly"][0].tzinfo == timezone.utc
     assert result["temperature_C"] == [20.0, 20.5, 21.0]
+    assert captured["wind_speed_unit"] == "ms"
 
 
 def test_city_lookup(monkeypatch):

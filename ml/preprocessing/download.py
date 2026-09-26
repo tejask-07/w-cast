@@ -40,10 +40,12 @@ class GFSDownloadResult(dict[str, Path]):
         paths: dict[str, Path],
         source_failures: list[dict[str, Any]],
         missing_subsets: list[str],
+        subset_sources: dict[str, str] | None = None,
     ):
         super().__init__(paths)
         self.source_failures = source_failures
         self.missing_subsets = missing_subsets
+        self.subset_sources = subset_sources or {}
 
 
 @contextmanager
@@ -146,6 +148,7 @@ def download_gfs_subsets(
     destination.mkdir(parents=True, exist_ok=True)
 
     paths: dict[str, Path] = {}
+    subset_sources: dict[str, str] = {}
     source_failures: list[dict[str, Any]] = []
     missing_subsets: list[str] = []
     forecasts: dict[str, Any] = {}
@@ -179,6 +182,7 @@ def download_gfs_subsets(
                 if not path.exists():
                     raise FileNotFoundError(f"Herbie reported a missing GFS subset: {path}")
                 paths[name] = path
+                subset_sources[name] = source
                 break
             except Exception as exc:
                 source_failures.append(
@@ -200,4 +204,4 @@ def download_gfs_subsets(
             missing_subsets,
         )
 
-    return GFSDownloadResult(paths, source_failures, missing_subsets)
+    return GFSDownloadResult(paths, source_failures, missing_subsets, subset_sources)

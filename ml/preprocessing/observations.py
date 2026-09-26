@@ -82,6 +82,7 @@ def get_historical_observations(
         "end_date": end.isoformat(),
         "hourly": HOURLY_VARIABLES,
         "timezone": "UTC",
+        "wind_speed_unit": "ms",
     }
     try:
         response = requests.get(ARCHIVE_URL, params=params, timeout=30)

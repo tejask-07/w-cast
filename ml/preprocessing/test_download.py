@@ -37,6 +37,7 @@ def test_download_gfs_subsets_uses_verified_searches_and_naive_utc(monkeypatch, 
     assert [call[1] for call in calls[1:]] == list(GFS_SUBSET_SEARCHES.values())
     assert set(paths) == set(GFS_SUBSET_SEARCHES)
     assert all(path.is_file() for path in paths.values())
+    assert paths.subset_sources == {name: "nomads" for name in GFS_SUBSET_SEARCHES}
 
 
 def test_download_gfs_subsets_reports_missing_nomads_file(monkeypatch, tmp_path):

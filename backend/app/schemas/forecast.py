@@ -99,3 +99,7 @@ class HourlyForecastResponse(BaseModel):
     lead_hours: int = Field(..., gt=0)
     unit: str
     points: list[HourlyForecastPoint]
+    source: str = "wcast_blend"
+    sources: dict[str, bool] = Field(
+        default_factory=lambda: {"gfs": True, "gefs": True}
+    )

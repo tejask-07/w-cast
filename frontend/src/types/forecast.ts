@@ -81,4 +81,9 @@ export type HourlyForecastResponse = {
 	lead_hours: number
 	unit: string
 	points: HourlyForecastPoint[]
+	source?: 'wcast_blend' | 'gfs_fallback' | 'gefs_fallback'
+	sources?: {
+		gfs: boolean
+		gefs: boolean
+	}
 }

@@ -63,6 +63,8 @@ def test_hourly_forecast_returns_requested_number_of_points(
     result = hourly.generate_hourly_forecast(19.07, 72.87, lead_hours, "temperature")
     assert len(result["points"]) == expected_points
     assert [point["hour"] for point in result["points"]] == list(range(lead_hours + 1))
+    assert result["source"] == "wcast_blend"
+    assert result["sources"] == {"gfs": True, "gefs": True}
 
 
 def test_hourly_forecast_downloads_gefs_only_at_three_hour_intervals(monkeypatch):
@@ -90,6 +92,65 @@ def test_hourly_rainfall_falls_back_to_gfs_when_gefs_apcp_is_unavailable(monkeyp
     result = hourly.generate_hourly_forecast(19.07, 72.87, 24, "rainfall")
     assert len(result["points"]) == 25
     assert result["points"][0] == {"hour": 0, "value": 0.0}
+    assert result["source"] == "gfs_fallback"
+    assert result["sources"] == {"gfs": True, "gefs": False}
+
+
+@pytest.mark.parametrize("variable", ["temperature", "wind_speed", "rainfall"])
+def test_hourly_forecast_uses_gfs_fallback_when_gefs_is_unavailable(
+    monkeypatch,
+    variable,
+):
+    _patch_hourly_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        hourly,
+        "_download_gefs_hour",
+        lambda hour: (_ for _ in ()).throw(RuntimeError("GEFS unavailable")),
+    )
+
+    result = hourly.generate_hourly_forecast(19.07, 72.87, 24, variable)
+
+    assert result["source"] == "gfs_fallback"
+    assert result["sources"] == {"gfs": True, "gefs": False}
+    assert len(result["points"]) == 25
+    assert all(point["value"] is not None for point in result["points"])
+
+
+@pytest.mark.parametrize("variable", ["temperature", "wind_speed", "rainfall"])
+def test_hourly_forecast_uses_gefs_fallback_when_gfs_is_unavailable(
+    monkeypatch,
+    variable,
+):
+    _patch_hourly_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        hourly,
+        "_download_gfs_hour",
+        lambda hour: (_ for _ in ()).throw(RuntimeError("GFS unavailable")),
+    )
+
+    result = hourly.generate_hourly_forecast(19.07, 72.87, 24, variable)
+
+    assert result["source"] == "gefs_fallback"
+    assert result["sources"] == {"gfs": False, "gefs": True}
+    assert len(result["points"]) == 25
+    assert all(point["value"] is not None for point in result["points"])
+
+
+def test_hourly_forecast_raises_when_neither_source_is_available(monkeypatch):
+    _patch_hourly_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        hourly,
+        "_download_gfs_hour",
+        lambda hour: (_ for _ in ()).throw(RuntimeError("GFS unavailable")),
+    )
+    monkeypatch.setattr(
+        hourly,
+        "_download_gefs_hour",
+        lambda hour: (_ for _ in ()).throw(RuntimeError("GEFS unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="Neither GFS nor GEFS"):
+        hourly.generate_hourly_forecast(19.07, 72.87, 24, "temperature")
 
 
 def test_hourly_accumulations_difference_and_f00():

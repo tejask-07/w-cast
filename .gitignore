@@ -26,5 +26,13 @@ backend/data/
 
 data/interim/forecast_maps/
 
+# Generated historical paired verification output
+/data/processed/historical_paired_validation.jsonl
+/data/processed/historical_paired_validation.report.json
+/data/processed/india_weight_map_validation.json
+/data/processed/historical_paired_evaluation.report.json
+/data/processed/historical_paired_oos_evaluation.jsonl
+/data/processed/historical_paired_oos_evaluation.report.json
+
 # Generated forecast download/cache data
 /frontend/data/

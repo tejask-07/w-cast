@@ -142,47 +142,112 @@ def _interval_accumulations(cumulative: dict[int, float]) -> dict[int, float]:
     return hourly
 
 
+def _valid_value(value: object) -> bool:
+    return isinstance(value, (int, float)) and np.isfinite(value)
+
+
+def _response(
+    variable: str,
+    lead_hours: int,
+    points: list[dict[str, float]],
+    source: str,
+) -> dict[str, object]:
+    return {
+        "variable": variable,
+        "lead_hours": lead_hours,
+        "unit": UNITS[variable],
+        "points": points,
+        "source": source,
+        "sources": {
+            "gfs": source in ("wcast_blend", "gfs_fallback"),
+            "gefs": source in ("wcast_blend", "gefs_fallback"),
+        },
+    }
+
+
+def _collect_gfs_values(
+    latitude: float,
+    longitude: float,
+    forecast_hours: range,
+    field: str,
+) -> dict[int, float]:
+    values: dict[int, float] = {}
+    for forecast_hour in forecast_hours:
+        try:
+            extracted = extract_gfs_point(
+                _download_gfs_hour(forecast_hour),
+                latitude,
+                longitude,
+                forecast_hour,
+            )
+            value = extracted.get(field)
+            if _valid_value(value):
+                values[forecast_hour] = float(value)
+        except Exception:
+            continue
+    return values
+
+
+def _collect_gefs_values(
+    latitude: float,
+    longitude: float,
+    forecast_hours: range,
+    field: str,
+) -> dict[int, float]:
+    values: dict[int, float] = {}
+    for forecast_hour in forecast_hours:
+        try:
+            extracted = extract_gefs_point(
+                _download_gefs_hour(forecast_hour),
+                latitude,
+                longitude,
+                forecast_hour,
+            )
+            value = extracted.get(field)
+            if _valid_value(value):
+                values[forecast_hour] = float(value)
+        except Exception:
+            continue
+    return values
+
+
 def _generate_hourly_rainfall(
     latitude: float,
     longitude: float,
     lead_hours: int,
 ) -> dict[str, object]:
-    gfs_cumulative: dict[int, float] = {}
-    for forecast_hour in range(lead_hours + 1):
-        extracted = extract_gfs_point(
-            _download_gfs_hour(forecast_hour),
-            latitude,
-            longitude,
-            forecast_hour,
-        )
-        if forecast_hour == 0:
-            continue
-        value = extracted.get("precipitation_mm")
-        if value is None:
-            raise RuntimeError(
-                f"GFS field unavailable for rainfall at F{forecast_hour:03d}"
-            )
-        gfs_cumulative[forecast_hour] = float(value)
+    gfs_cumulative = _collect_gfs_values(
+        latitude,
+        longitude,
+        range(1, lead_hours + 1),
+        "precipitation_mm",
+    )
+    gefs_cumulative = _collect_gefs_values(
+        latitude,
+        longitude,
+        range(GEFS_INTERVAL_HOURS, lead_hours + 1, GEFS_INTERVAL_HOURS),
+        "precipitation_mm",
+    )
+    gfs_available = len(gfs_cumulative) == lead_hours
+    gefs_available = len(gefs_cumulative) == len(
+        range(GEFS_INTERVAL_HOURS, lead_hours + 1, GEFS_INTERVAL_HOURS)
+    )
 
-    gfs_rainfall = _hourly_accumulations(gfs_cumulative, lead_hours)
-    gefs_cumulative: dict[int, float] = {}
-    for forecast_hour in range(0, lead_hours + 1, GEFS_INTERVAL_HOURS):
-        extracted = extract_gefs_point(
-            _download_gefs_hour(forecast_hour),
-            latitude,
-            longitude,
-            forecast_hour,
+    if not gfs_available and not gefs_available:
+        raise RuntimeError(
+            f"Neither GFS nor GEFS rainfall data is available for F{lead_hours:03d}"
         )
-        value = extracted.get("precipitation_mm")
-        if value is not None and forecast_hour > 0:
-            gefs_cumulative[forecast_hour] = float(value)
 
-    if len(gefs_cumulative) == len(range(3, lead_hours + 1, GEFS_INTERVAL_HOURS)):
-        gefs_rainfall_at_intervals = _interval_accumulations(gefs_cumulative)
+    gfs_rainfall = _hourly_accumulations(gfs_cumulative, lead_hours) if gfs_available else None
+    gefs_rainfall = None
+    if gefs_available:
         gefs_rainfall = _interpolate(
-            gefs_rainfall_at_intervals,
+            _interval_accumulations(gefs_cumulative),
             range(lead_hours + 1),
         )
+
+    if gfs_available and gefs_available:
+        source = "wcast_blend"
         points = [
             {
                 "hour": hour,
@@ -197,20 +262,22 @@ def _generate_hourly_rainfall(
             }
             for hour in range(lead_hours + 1)
         ]
-    else:
-        # GEFS APCP is optional in the official ensemble-mean product. Keep
-        # rainfall real and explicit by using the GFS accumulation only.
+    elif gfs_available:
+        source = "gfs_fallback"
         points = [
             {"hour": hour, "value": gfs_rainfall[hour]}
             for hour in range(lead_hours + 1)
         ]
+    else:
+        source = "gefs_fallback"
+        points = [
+            {"hour": hour, "value": gefs_rainfall[hour]}
+            for hour in range(lead_hours + 1)
+        ]
 
-    return {
-        "variable": "rainfall",
-        "lead_hours": lead_hours,
-        "unit": UNITS["rainfall"],
-        "points": points,
-    }
+    return _response("rainfall", lead_hours, points, source)
+
+
 def generate_hourly_forecast(
     latitude: float,
     longitude: float,
@@ -235,72 +302,62 @@ def generate_hourly_forecast(
         "wind_speed": {},
     }
 
-    for forecast_hour in forecast_hours:
-        extracted = extract_gfs_point(
-            _download_gfs_hour(forecast_hour),
-            latitude,
-            longitude,
-            forecast_hour,
-        )
-        field = {
-            "temperature": "temperature_C",
-            "precipitation": "precipitation_mm",
-            "wind_speed": "wind_speed_ms",
-        }[internal_variable]
-        value = extracted.get(field)
-        if value is None:
-            raise RuntimeError(
-                f"GFS field unavailable for {variable} at F{forecast_hour:03d}"
-            )
-        gfs_values[internal_variable][forecast_hour] = float(value)
+    field = {
+        "temperature": "temperature_C",
+        "precipitation": "precipitation_mm",
+        "wind_speed": "wind_speed_ms",
+    }[internal_variable]
+    gfs_values[internal_variable] = _collect_gfs_values(
+        latitude,
+        longitude,
+        forecast_hours,
+        field,
+    )
+    gefs_values[internal_variable] = _collect_gefs_values(
+        latitude,
+        longitude,
+        gefs_hours,
+        field,
+    )
+    gfs_available = len(gfs_values[internal_variable]) == len(list(forecast_hours))
+    gefs_available = len(gefs_values[internal_variable]) == len(list(gefs_hours))
 
-    for forecast_hour in gefs_hours:
-        extracted = extract_gefs_point(
-            _download_gefs_hour(forecast_hour),
-            latitude,
-            longitude,
-            forecast_hour,
-        )
-        field = {
-            "temperature": "temperature_C",
-            "precipitation": "precipitation_mm",
-            "wind_speed": "wind_speed_ms",
-        }[internal_variable]
-        value = extracted.get(field)
-        if value is not None:
-            gefs_values[internal_variable][forecast_hour] = float(value)
-
-    if not gefs_values[internal_variable]:
+    if not gfs_available and not gefs_available:
         raise RuntimeError(
-            f"GEFS field unavailable for {variable} across the requested forecast range"
-        )
-    if len(gefs_values[internal_variable]) != len(list(gefs_hours)):
-        raise RuntimeError(
-            f"GEFS field unavailable for {variable} at one or more forecast hours"
+            f"Neither GFS nor GEFS {variable} data is available for F{lead_hours:03d}"
         )
 
     interpolated_gefs = _interpolate(
         gefs_values[internal_variable],
         forecast_hours,
-    )
-    points = [
-        {
-            "hour": forecast_hour,
-            "value": _blend_value(
-                latitude,
-                longitude,
-                internal_variable,
-                lead_hours,
-                gfs_values[internal_variable][forecast_hour],
-                interpolated_gefs[forecast_hour],
-            ),
-        }
-        for forecast_hour in forecast_hours
-    ]
+    ) if gefs_available else None
+    if gfs_available and gefs_available:
+        source = "wcast_blend"
+        points = [
+            {
+                "hour": forecast_hour,
+                "value": _blend_value(
+                    latitude,
+                    longitude,
+                    internal_variable,
+                    lead_hours,
+                    gfs_values[internal_variable][forecast_hour],
+                    interpolated_gefs[forecast_hour],
+                ),
+            }
+            for forecast_hour in forecast_hours
+        ]
+    elif gfs_available:
+        source = "gfs_fallback"
+        points = [
+            {"hour": hour, "value": gfs_values[internal_variable][hour]}
+            for hour in forecast_hours
+        ]
+    else:
+        source = "gefs_fallback"
+        points = [
+            {"hour": hour, "value": interpolated_gefs[hour]}
+            for hour in forecast_hours
+        ]
 
-    return {
-        "variable": variable,
-        "lead_hours": lead_hours,
-        "unit": UNITS[variable],
-        "points": points,
-    }
+    return _response(variable, lead_hours, points, source)
