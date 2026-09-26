@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
 
+from ml.features.temporal_features import get_season
+
 from app.services.gfs_forecast_service import (
     generate_real_gfs_forecast as _generate_real_gfs_forecast,
 )
@@ -246,12 +248,17 @@ def generate_weights(
 
     result = {}
 
+    season = get_season(datetime.now(timezone.utc))
+    regime = classify_regime(0.0)
+
     for api_name, variable in variables.items():
         result[api_name] = get_forecast_weights(
             latitude=lat,
             longitude=lon,
             variable=variable,
             lead_hours=lead_hours,
+            season=season,
+            regime=regime,
             path=WEIGHT_MAP_PATH,
         )
 

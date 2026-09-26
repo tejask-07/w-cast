@@ -11,9 +11,11 @@ from app.services.forecast_service import (
     validate_variable,
 )
 from ml.blending.weight_service import get_forecast_weights
+from ml.features.temporal_features import get_season
 from ml.preprocessing.download import download_gfs_subsets
 from ml.preprocessing.gefs import download_gefs_subsets, extract_gefs_point
 from ml.preprocessing.gfs_extract import extract_gfs_point
+from ml.regimes.classifier import classify_regime
 
 SUPPORTED_LEADS = (24, 48, 72)
 HISTORY_PATH = REPO_ROOT / "data" / "processed" / "history_7d_multilead.json"
@@ -87,11 +89,17 @@ def _blend_value(
     gfs_value: float,
     gefs_value: float,
 ) -> float:
+    season = get_season(datetime.now(timezone.utc))
+    regime = "DRY"
+    if variable == "rainfall":
+        regime = classify_regime(float(gfs_value) if gfs_value >= 0 else 0.0)
     weights = get_forecast_weights(
         latitude=latitude,
         longitude=longitude,
         variable=variable,
         lead_hours=lead_hours,
+        season=season,
+        regime=regime,
         path=WEIGHT_MAP_PATH,
     )
     return float(

@@ -1,9 +1,11 @@
 ﻿"""Adaptive GFS + GEFS spatial forecast pipeline."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ml.features.temporal_features import get_season
 from ml.regimes.classifier import classify_regime
 from ml.regimes.extremes import detect_extremes
 from ml.spatial.location import resolve_location
@@ -76,6 +78,8 @@ def generate_forecast(
     all_weights = {}
     historical_skill = {}
 
+    season = get_season(datetime.now(timezone.utc))
+
     for name, field in FIELDS.items():
 
         gfs_value = gfs.get(field)
@@ -86,6 +90,9 @@ def generate_forecast(
                 f"Missing {name} from GFS or GEFS."
             )
 
+        regime = None
+        if name == "precipitation":
+            regime = classify_regime(float(gfs_value))
         result = spatial_blend(
             latitude=lat,
             longitude=lon,
@@ -93,6 +100,8 @@ def generate_forecast(
             lead_hours=lead_hours,
             gfs_value=float(gfs_value),
             gefs_value=float(gefs_value),
+            season=season,
+            regime=regime,
         )
 
         blended[name] = result["blended"]

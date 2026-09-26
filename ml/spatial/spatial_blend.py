@@ -12,6 +12,8 @@ def spatial_blend(
     lead_hours: int,
     gfs_value: float,
     gefs_value: float,
+    season: str | None = None,
+    regime: str | None = None,
 ) -> dict[str, Any]:
 
     skill = get_forecast_weights(
@@ -19,6 +21,8 @@ def spatial_blend(
         longitude=longitude,
         variable=variable,
         lead_hours=lead_hours,
+        season=season,
+        regime=regime,
     )
 
     weights = skill["weights"]

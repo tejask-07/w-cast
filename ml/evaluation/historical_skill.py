@@ -23,14 +23,24 @@ SKILL_MODELS = ("gfs", "gefs")
 
 
 def record_context(record: Mapping[str, Any]) -> tuple[str, str]:
-    """Return season and forecast-time regime without using future observations."""
-    valid_time = record.get("valid_time") or record.get("forecast_init_time")
-    season = "unknown"
-    if valid_time is not None:
-        season = get_season(_utc_datetime(valid_time, "valid_time"))
+    """Return stored or derived season/regime without using future observations."""
+    season = record.get("season")
+    if season is None:
+        valid_time = record.get("valid_time") or record.get("forecast_init_time")
+        season = "unknown"
+        if valid_time is not None:
+            season = get_season(_utc_datetime(valid_time, "valid_time"))
+    season = str(season).lower() if season is not None else "unknown"
+
+    regime = record.get("regime")
+    if regime is not None:
+        return season, str(regime).upper()
+
     precipitation = record.get("forecast_precipitation_mm")
     if precipitation is None and record.get("variable") == "precipitation":
         precipitation = record.get("gfs")
+    if precipitation is None and record.get("variable") == "temperature":
+        precipitation = record.get("forecast_precipitation_mm")
     regime = "UNKNOWN"
     if precipitation is not None:
         try:
@@ -76,6 +86,22 @@ def _observation_value(observation: Mapping[str, Any], field: str) -> float | No
     return _finite_or_none(observation.get(field), f"observation.{field}")
 
 
+def _same_case_forecast_precipitation(forecasts: Mapping[str, Any]) -> float | None:
+    """Return the same-case precipitation context from GFS or GEFS, never the observation."""
+    for model in ("gfs", "gefs"):
+        model_forecast = forecasts.get(model)
+        if not isinstance(model_forecast, Mapping):
+            continue
+        precipitation = model_forecast.get("precipitation_mm")
+        try:
+            value = _finite_or_none(precipitation, f"{model}.precipitation_mm")
+        except ValueError:
+            continue
+        if value is not None:
+            return value
+    return None
+
+
 def build_verification_record(
     forecast_init_time: datetime | str,
     valid_time: datetime | str,
@@ -107,6 +133,11 @@ def build_verification_record(
     longitude = location["longitude"]
     gfs = _forecast_value(forecasts, "gfs", field)
     gefs = _forecast_value(forecasts, "gefs", field)
+    forecast_precipitation_mm = _same_case_forecast_precipitation(forecasts)
+    season = get_season(valid)
+    regime = "UNKNOWN"
+    if forecast_precipitation_mm is not None:
+        regime = classify_regime(forecast_precipitation_mm)
     return {
         "forecast_init_time": init,
         "valid_time": valid,
@@ -119,6 +150,9 @@ def build_verification_record(
         "gfs": gfs,
         "gefs": gefs,
         "observation": observed,
+        "season": season,
+        "forecast_precipitation_mm": forecast_precipitation_mm,
+        "regime": regime,
         "gfs_error": None if gfs is None else gfs - observed,
         "gefs_error": None if gefs is None else gefs - observed,
         "gfs_absolute_error": None if gfs is None else abs(gfs - observed),
