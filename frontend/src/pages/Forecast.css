@@ -209,6 +209,9 @@
   right: 0;
   left: 0;
 
+  max-height: 240px;
+  overflow-y: auto;
+
   border: 1px solid #111;
   background: #f7f6f2;
 }
@@ -240,11 +243,42 @@
   text-align: left;
 }
 
+.location-suggestion-name,
+.location-suggestion-context {
+  display: block;
+}
+
+.location-suggestion-name {
+  color: #111;
+}
+
+.location-suggestion-context {
+  margin-top: 4px;
+  color: #777;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
 .location-suggestion:last-child {
   border-bottom: 0;
 }
 
 .location-suggestion:hover {
+  background: #111;
+  color: #fff;
+}
+
+.location-suggestion:hover .location-suggestion-name,
+.location-suggestion.active .location-suggestion-name {
+  color: #fff;
+}
+
+.location-suggestion:hover .location-suggestion-context,
+.location-suggestion.active .location-suggestion-context {
+  color: #bbb;
+}
+
+.location-suggestion.active {
   background: #111;
   color: #fff;
 }

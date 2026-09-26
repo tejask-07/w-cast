@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -17,6 +18,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { useForecast } from '../hooks/useForecast'
 import { searchLocations } from '../services/geocoding'
+import type { LocationSuggestion } from '../services/geocoding'
 import type { ForecastLocation, ForecastVariable } from '../types/forecast'
 
 import './Forecast.css'
@@ -67,17 +69,25 @@ function getAOI(
   }
 }
 
+function formatCoordinates(latitude: number, longitude: number): string {
+  const latitudeHemisphere = latitude < 0 ? 'S' : 'N'
+  const longitudeHemisphere = longitude < 0 ? 'W' : 'E'
+  return `${Math.abs(latitude).toFixed(4)}° ${latitudeHemisphere}  ${Math.abs(longitude).toFixed(4)}° ${longitudeHemisphere}`
+}
+
 /* ================================================= */
 /* MAP CONTROLLER */
 /* ================================================= */
 
 function MapController({
   location,
+  zoom,
   startDrawing,
   onAOIChange,
   onDrawingChange,
 }: {
   location: ForecastLocation
+  zoom: number
   startDrawing: number
   onAOIChange: (aoi: AOI | null) => void
   onDrawingChange: (drawing: boolean) => void
@@ -99,7 +109,7 @@ function MapController({
   useEffect(() => {
     map.flyTo(
       [location.lat, location.lon],
-      9,
+      zoom,
       {
         duration: 0.7,
       },
@@ -117,6 +127,7 @@ function MapController({
     onDrawingChange(false)
   }, [
     location,
+    zoom,
     map,
     onAOIChange,
     onDrawingChange,
@@ -321,7 +332,22 @@ function Forecast() {
   const [
     locationSuggestions,
     setLocationSuggestions,
-  ] = useState<ForecastLocation[]>([])
+  ] = useState<LocationSuggestion[]>([])
+
+  const [
+    showSuggestions,
+    setShowSuggestions,
+  ] = useState(false)
+
+  const [
+    selectedSuggestionIndex,
+    setSelectedSuggestionIndex,
+  ] = useState(-1)
+
+  const [
+    selectedLocationZoom,
+    setSelectedLocationZoom,
+  ] = useState(9)
 
   const [
     searchingLocations,
@@ -370,6 +396,8 @@ function Forecast() {
   } = useForecast()
 
   const searchRequest = useRef(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const searchContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const query = searchQuery.trim()
@@ -381,6 +409,7 @@ function Forecast() {
     const requestId = searchRequest.current + 1
     searchRequest.current = requestId
     const controller = new AbortController()
+    abortControllerRef.current = controller
     const timeout = window.setTimeout(() => {
       setSearchingLocations(true)
       setLocationSearchError(false)
@@ -389,6 +418,8 @@ function Forecast() {
         .then((results) => {
           if (requestId !== searchRequest.current) return
           setLocationSuggestions(results)
+          setSelectedSuggestionIndex(-1)
+          setShowSuggestions(true)
         })
         .catch(() => {
           if (controller.signal.aborted || requestId !== searchRequest.current) return
@@ -408,7 +439,19 @@ function Forecast() {
     }
   }, [locationSelected, searchQuery])
 
+  useEffect(() => {
+    const handleOutsidePointer = (event: MouseEvent) => {
+      if (!searchContainerRef.current?.contains(event.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsidePointer)
+    return () => document.removeEventListener('mousedown', handleOutsidePointer)
+  }, [])
+
   const mapLocation = selectedLocation ?? defaultLocation
+  const mapZoom = selectedLocation ? selectedLocationZoom : 9
 
   const forecastLocation = aoi
     ? {
@@ -429,10 +472,14 @@ function Forecast() {
   const handleSearchChange = (
     value: string,
   ) => {
+    abortControllerRef.current?.abort()
+    searchRequest.current += 1
     setSearchQuery(value)
     setLocationSelected(false)
     setSelectedLocation(null)
     setLocationSuggestions([])
+    setShowSuggestions(value.trim().length >= 2)
+    setSelectedSuggestionIndex(-1)
     setSearchingLocations(false)
     setAoi(null)
     setDrawingAOI(false)
@@ -440,14 +487,52 @@ function Forecast() {
   }
 
   const handleLocationSelect = (
-    location: ForecastLocation,
+    suggestion: LocationSuggestion,
   ) => {
-    setSelectedLocation(location)
-    setSearchQuery(location.name ?? '')
+    abortControllerRef.current?.abort()
+    searchRequest.current += 1
+    const [latitude, longitude] = suggestion.center
+    setSelectedLocation({
+      name: suggestion.displayName,
+      lat: latitude,
+      lon: longitude,
+    })
+    setSelectedLocationZoom(suggestion.zoom)
+    setSearchQuery(suggestion.displayName)
     setLocationSuggestions([])
+    setShowSuggestions(false)
+    setSelectedSuggestionIndex(-1)
     setLocationSelected(true)
     setAoi(null)
     setDrawingAOI(false)
+  }
+
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      abortControllerRef.current?.abort()
+      searchRequest.current += 1
+      setSearchingLocations(false)
+      setShowSuggestions(false)
+      setSelectedSuggestionIndex(-1)
+      return
+    }
+
+    if (!showSuggestions || locationSuggestions.length === 0) return
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setSelectedSuggestionIndex((current) =>
+        current >= locationSuggestions.length - 1 ? 0 : current + 1,
+      )
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setSelectedSuggestionIndex((current) =>
+        current <= 0 ? locationSuggestions.length - 1 : current - 1,
+      )
+    } else if (event.key === 'Enter' && selectedSuggestionIndex >= 0) {
+      event.preventDefault()
+      handleLocationSelect(locationSuggestions[selectedSuggestionIndex])
+    }
   }
 
   const generateForecast = async () => {
@@ -534,22 +619,28 @@ function Forecast() {
               LOCATION
             </div>
 
-            <div className="location-search">
+            <div className="location-search" ref={searchContainerRef}>
 
               <input
                 type="search"
                 value={searchQuery}
                 placeholder="SEARCH LOCATION"
                 aria-label="Search location"
+                aria-autocomplete="list"
+                aria-expanded={showSuggestions}
+                aria-controls="location-suggestion-list"
+                onKeyDown={handleSearchKeyDown}
                 onChange={(event) =>
                   handleSearchChange(event.target.value)
                 }
               />
 
-              {!locationSelected && searchQuery.trim().length >= 2 && (
+              {showSuggestions && !locationSelected && searchQuery.trim().length >= 2 && (
                 <div
+                  id="location-suggestion-list"
                   className="location-suggestions"
                   role="listbox"
+                  aria-label="Location suggestions"
                 >
                   {searchingLocations && (
                     <div className="location-search-state">
@@ -571,15 +662,24 @@ function Forecast() {
                     </div>
                   )}
 
-                  {locationSuggestions.map((location) => (
+                  {locationSuggestions.map((suggestion, index) => (
                     <button
                       type="button"
-                      className="location-suggestion"
+                      className={
+                        selectedSuggestionIndex === index
+                          ? 'location-suggestion active'
+                          : 'location-suggestion'
+                      }
                       role="option"
-                      key={`${location.name}-${location.lat}-${location.lon}`}
-                      onClick={() => handleLocationSelect(location)}
+                      aria-selected={selectedSuggestionIndex === index}
+                      key={suggestion.id}
+                      onMouseEnter={() => setSelectedSuggestionIndex(index)}
+                      onClick={() => handleLocationSelect(suggestion)}
                     >
-                      {location.name}
+                      <span className="location-suggestion-name">{suggestion.name}</span>
+                      {suggestion.secondaryText && (
+                        <span className="location-suggestion-context">{suggestion.secondaryText}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -591,13 +691,13 @@ function Forecast() {
 
               <span>
                 {selectedLocation
-                  ? `${selectedLocation.lat.toFixed(4)}° N`
+                  ? formatCoordinates(selectedLocation.lat, selectedLocation.lon).split('  ')[0]
                   : '—'}
               </span>
 
               <span>
                 {selectedLocation
-                  ? `${selectedLocation.lon.toFixed(4)}° E`
+                  ? formatCoordinates(selectedLocation.lat, selectedLocation.lon).split('  ')[1]
                   : '—'}
               </span>
 
@@ -895,7 +995,7 @@ function Forecast() {
                 mapLocation.lat,
                 mapLocation.lon,
               ]}
-              zoom={9}
+              zoom={mapZoom}
               scrollWheelZoom
               zoomControl
               className="forecast-map"
@@ -909,6 +1009,7 @@ function Forecast() {
 
               <MapController
                 location={mapLocation}
+                zoom={mapZoom}
                 startDrawing={drawRequest}
                 onAOIChange={setAoi}
                 onDrawingChange={
@@ -945,9 +1046,7 @@ function Forecast() {
               </strong>
 
               <span>
-                {mapLocation.lat.toFixed(4)}° N
-                &nbsp;&nbsp;
-                {mapLocation.lon.toFixed(4)}° E
+                {formatCoordinates(mapLocation.lat, mapLocation.lon)}
               </span>
 
             </div>
