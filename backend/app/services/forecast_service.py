@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
 
@@ -9,8 +9,9 @@ from app.services.gfs_forecast_service import (
 )
 
 from ml.pipeline import generate_forecast as generate_forecast_ml
+from ml.blending.weight_service import get_forecast_weights
 from ml.spatial.india_grid import is_in_india
-from ml.spatial.lookup import get_spatial_weights
+from ml.spatial.location import resolve_location
 from ml.preprocessing.download import (
     GFSDownloadError,
     GFS_SUBSET_SEARCHES,
@@ -24,27 +25,13 @@ from ml.regimes.extremes import detect_extremes
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-WEIGHT_MAP_PATH = REPO_ROOT / "data" / "processed" / "india_weight_map_7d.json"
+WEIGHT_MAP_PATH = REPO_ROOT / "data" / "processed" / "india_weight_map_audited_gefs_2026-09-20_to_2026-09-24.json"
 
 
 def resolve_location_name(lat: float, lon: float) -> str | None:
     if not is_in_india(lat, lon):
         return None
-
-    locations = {
-        "Mumbai": (19.0760, 72.8777),
-        "Delhi": (28.6139, 77.2090),
-        "Kolkata": (22.5726, 88.3639),
-        "Chennai": (13.0827, 80.2707),
-    }
-
-    return min(
-        locations,
-        key=lambda name: (
-            (locations[name][0] - lat) ** 2
-            + (locations[name][1] - lon) ** 2
-        ),
-    )
+    return resolve_location(lat, lon)["city"]
 
 
 def validate_variable(variable: str) -> None:
@@ -83,9 +70,7 @@ def _download_forecast_sources(lead_hours: int):
         )
 
         if cycle_time > now:
-            cycle_time = cycle_time.replace(
-                day=cycle_time.day - 1
-            )
+            cycle_time -= timedelta(days=1)
 
         print(
             f"Trying forecast cycle: "
@@ -98,7 +83,7 @@ def _download_forecast_sources(lead_hours: int):
             gfs_paths = download_gfs_subsets(
                 date=cycle_time,
                 forecast_hour=lead_hours,
-                save_dir="data/raw/gfs",
+                save_dir=REPO_ROOT / "data" / "raw" / "gfs",
             )
 
             missing_gfs_subsets = sorted(
@@ -115,7 +100,7 @@ def _download_forecast_sources(lead_hours: int):
             gefs_paths = download_gefs_subsets(
                 date=cycle_time,
                 forecast_hour=lead_hours,
-                save_dir="data/raw/gefs",
+                save_dir=REPO_ROOT / "data" / "raw" / "gefs",
             )
 
             print(
@@ -262,7 +247,7 @@ def generate_weights(
     result = {}
 
     for api_name, variable in variables.items():
-        result[api_name] = get_spatial_weights(
+        result[api_name] = get_forecast_weights(
             latitude=lat,
             longitude=lon,
             variable=variable,

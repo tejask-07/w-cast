@@ -11,7 +11,7 @@ DEFAULT_WEIGHT_MAP = (
     Path(__file__).resolve().parents[2]
     / "data"
     / "processed"
-    / "india_weight_map_7d.json"
+    / "india_weight_map_audited_gefs_2026-09-20_to_2026-09-24.json"
 )
 
 

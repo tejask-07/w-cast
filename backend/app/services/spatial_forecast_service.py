@@ -9,11 +9,12 @@ import numpy as np
 
 from app.services.forecast_service import (
     REPO_ROOT,
+    WEIGHT_MAP_PATH,
     _download_forecast_sources,
     resolve_location_name,
 )
 from ml.blending.blender import blend_forecasts
-from ml.evaluation.historical_weights import build_historical_weights
+from ml.blending.weight_service import get_forecast_weights
 from ml.spatial.india_grid import is_in_india
 
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
@@ -217,12 +218,13 @@ def _interpolate_to_grid(
 def _weights(latitude: float, longitude: float, variable: str, lead_hours: int):
     if not is_in_india(latitude, longitude):
         return {"gfs": 0.5, "gefs": 0.5}
-    city = resolve_location_name(latitude, longitude)
     internal_variable = "precipitation" if variable == "rainfall" else variable
-    historical = build_historical_weights(HISTORY_PATH)
-    return historical.get(city, {}).get(internal_variable, {}).get(
-        str(lead_hours), {}
-    ).get("weights", {"gfs": 0.5, "gefs": 0.5})
+    return get_forecast_weights(
+        latitude,
+        longitude,
+        internal_variable,
+        lead_hours,
+    )["weights"]
 
 
 def _cache_key(
@@ -249,6 +251,10 @@ def _cache_key(
         "lead_hours": lead_hours,
         "bounds": bounds,
         "sources": source_signature,
+        "weight_map": (
+            WEIGHT_MAP_PATH.stat().st_size,
+            WEIGHT_MAP_PATH.stat().st_mtime_ns,
+        ),
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode("utf-8")

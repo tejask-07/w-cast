@@ -15,6 +15,10 @@ class VerificationMetrics(BaseModel):
     gfs: Metric
     gefs: Metric
     adaptive_blend: Metric
+    equal_blend: Metric | None = None
+    wcast: Metric | None = None
+    improvement_vs_gfs: float | None = None
+    improvement_vs_gefs: float | None = None
 
 
 class VerificationResponse(BaseModel):

@@ -90,6 +90,7 @@ def build_india_weight_map(
                 "lat": cell["lat"],
                 "lon": cell["lon"],
                 "region": cell["region"],
+                "nearest_city": cell["nearest_city"],
                 "skill_source": source,
                 **cell_skills,
             }

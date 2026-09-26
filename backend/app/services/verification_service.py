@@ -73,6 +73,9 @@ def _calculate_metrics(records: list[dict]) -> dict:
     gfs_bias = np.mean(gfs_error)
     gefs_bias = np.mean(gefs_error)
 
+    equal_blend = 0.5 * gfs + 0.5 * gefs
+    equal_error = equal_blend - observations
+
     gfs_score = 1.0 / (gfs_mae + 1e-6)
     gefs_score = 1.0 / (gefs_mae + 1e-6)
 
@@ -108,6 +111,18 @@ def _calculate_metrics(records: list[dict]) -> dict:
             "rmse": float(blend_rmse),
             "bias": float(blend_bias),
         },
+        "equal_blend": {
+            "mae": float(np.mean(np.abs(equal_error))),
+            "rmse": float(np.sqrt(np.mean(equal_error ** 2))),
+            "bias": float(np.mean(equal_error)),
+        },
+        "wcast": {
+            "mae": float(blend_mae),
+            "rmse": float(blend_rmse),
+            "bias": float(blend_bias),
+        },
+        "improvement_vs_gfs": float(gfs_mae - blend_mae),
+        "improvement_vs_gefs": float(gefs_mae - blend_mae),
     }
 
 

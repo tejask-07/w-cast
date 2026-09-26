@@ -10,10 +10,10 @@ from app.services.forecast_service import (
     _api_variable,
     validate_variable,
 )
+from ml.blending.weight_service import get_forecast_weights
 from ml.preprocessing.download import download_gfs_subsets
 from ml.preprocessing.gefs import download_gefs_subsets, extract_gefs_point
 from ml.preprocessing.gfs_extract import extract_gfs_point
-from ml.spatial.lookup import get_spatial_weights
 
 SUPPORTED_LEADS = (24, 48, 72)
 HISTORY_PATH = REPO_ROOT / "data" / "processed" / "history_7d_multilead.json"
@@ -55,13 +55,11 @@ def _download_gfs_hour(forecast_hour: int):
             return download_gfs_subsets(
                 date=cycle_time,
                 forecast_hour=forecast_hour,
-                save_dir="data/raw/gfs",
+                save_dir=REPO_ROOT / "data" / "raw" / "gfs",
             )
         except Exception as exc:
             last_error = exc
-    raise RuntimeError(
-        f"No available GFS forecast cycle found for F{forecast_hour:03d}"
-    ) from last_error
+    return None
 
 
 def _download_gefs_hour(forecast_hour: int):
@@ -71,16 +69,14 @@ def _download_gefs_hour(forecast_hour: int):
             paths = download_gefs_subsets(
                 date=cycle_time,
                 forecast_hour=forecast_hour,
-                save_dir="data/raw/gefs",
+                save_dir=REPO_ROOT / "data" / "raw" / "gefs",
             )
             if paths is None:
                 continue
             return paths
         except Exception as exc:
             last_error = exc
-    raise RuntimeError(
-        f"No available GEFS ensemble-mean forecast cycle found for F{forecast_hour:03d}"
-    ) from last_error
+    return None
 
 
 def _blend_value(
@@ -91,7 +87,7 @@ def _blend_value(
     gfs_value: float,
     gefs_value: float,
 ) -> float:
-    weights = get_spatial_weights(
+    weights = get_forecast_weights(
         latitude=latitude,
         longitude=longitude,
         variable=variable,
@@ -216,22 +212,24 @@ def _generate_hourly_rainfall(
     longitude: float,
     lead_hours: int,
 ) -> dict[str, object]:
+    gfs_hours = range(1, lead_hours + 1)
+    gefs_hours = range(GEFS_INTERVAL_HOURS, lead_hours + 1, GEFS_INTERVAL_HOURS)
+
     gfs_cumulative = _collect_gfs_values(
         latitude,
         longitude,
-        range(1, lead_hours + 1),
+        gfs_hours,
         "precipitation_mm",
     )
     gefs_cumulative = _collect_gefs_values(
         latitude,
         longitude,
-        range(GEFS_INTERVAL_HOURS, lead_hours + 1, GEFS_INTERVAL_HOURS),
+        gefs_hours,
         "precipitation_mm",
     )
-    gfs_available = len(gfs_cumulative) == lead_hours
-    gefs_available = len(gefs_cumulative) == len(
-        range(GEFS_INTERVAL_HOURS, lead_hours + 1, GEFS_INTERVAL_HOURS)
-    )
+
+    gfs_available = len(gfs_cumulative) == len(list(gfs_hours))
+    gefs_available = len(gefs_cumulative) == len(list(gefs_hours))
 
     if not gfs_available and not gefs_available:
         raise RuntimeError(
@@ -331,6 +329,7 @@ def generate_hourly_forecast(
         gefs_values[internal_variable],
         forecast_hours,
     ) if gefs_available else None
+
     if gfs_available and gefs_available:
         source = "wcast_blend"
         points = [

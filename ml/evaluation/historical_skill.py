@@ -10,6 +10,7 @@ import pandas as pd
 
 from ml.evaluation.metrics import bias, mae, rmse
 from ml.regimes.classifier import classify_regime
+from ml.features.temporal_features import get_season
 
 VARIABLE_FIELDS = {
     "temperature": "temperature_C",
@@ -19,6 +20,24 @@ VARIABLE_FIELDS = {
 
 MIN_LOCAL_SAMPLES = 3
 SKILL_MODELS = ("gfs", "gefs")
+
+
+def record_context(record: Mapping[str, Any]) -> tuple[str, str]:
+    """Return season and forecast-time regime without using future observations."""
+    valid_time = record.get("valid_time") or record.get("forecast_init_time")
+    season = "unknown"
+    if valid_time is not None:
+        season = get_season(_utc_datetime(valid_time, "valid_time"))
+    precipitation = record.get("forecast_precipitation_mm")
+    if precipitation is None and record.get("variable") == "precipitation":
+        precipitation = record.get("gfs")
+    regime = "UNKNOWN"
+    if precipitation is not None:
+        try:
+            regime = classify_regime(float(precipitation))
+        except (TypeError, ValueError):
+            pass
+    return season, regime
 
 
 def _utc_datetime(value: datetime | str, name: str) -> datetime:
@@ -348,3 +367,92 @@ def hierarchical_historical_skill(
         lead_hours,
         minimum_samples=minimum_samples,
     )
+
+
+def aggregate_contextual_hierarchical_skill(
+    records: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Aggregate model errors by scope, season, regime, variable, and lead."""
+    result: dict[str, Any] = {"city": {}, "region": {}, "india": {"India": {}}}
+    for record in records:
+        city = record.get("city")
+        variable = record.get("variable")
+        lead = record.get("lead_hours")
+        if city is None or variable is None or lead is None:
+            continue
+        season, regime = record_context(record)
+        region = _record_region(record)
+        groups = [("city", str(city))]
+        if region is not None:
+            groups.append(("region", region))
+        groups.append(("india", "India"))
+        for scope, group in groups:
+            bucket = (
+                result.setdefault(scope, {}).setdefault(group, {})
+                .setdefault(season, {}).setdefault(regime, {})
+                .setdefault(str(variable), {}).setdefault(str(lead), _new_skill_bucket())
+            )
+            observation = record.get("observation")
+            try:
+                observed = float(observation)
+            except (TypeError, ValueError):
+                continue
+            if not isfinite(observed):
+                continue
+            for model in SKILL_MODELS:
+                try:
+                    predicted = float(record.get(model))
+                except (TypeError, ValueError):
+                    continue
+                if isfinite(predicted):
+                    bucket[model]["actual"].append(observed)
+                    bucket[model]["forecast"].append(predicted)
+
+    for scopes in result.values():
+        for groups in scopes.values():
+            for seasons in groups.values():
+                for regimes in seasons.values():
+                    for variables in regimes.values():
+                        for leads in variables.values():
+                            for model in SKILL_MODELS:
+                                values = leads[model]
+                                leads[model] = _metric_summary(
+                                    values["actual"], values["forecast"]
+                                )
+    return result
+
+
+def select_contextual_hierarchical_skill(
+    aggregates: Mapping[str, Any],
+    city: str,
+    variable: str,
+    lead_hours: int,
+    season: str,
+    regime: str,
+    minimum_samples: int = MIN_LOCAL_SAMPLES,
+) -> dict[str, Any]:
+    """Select contextual skill using city/region/India then season fallback."""
+    from ml.preprocessing.align import LOCATION_METADATA
+
+    region = str(LOCATION_METADATA[city]["region"])
+    contexts = ((season, regime), (season, None), (None, None))
+    scopes = (("city", city), ("region", region), ("india", "India"))
+    for context_season, context_regime in contexts:
+        for scope, group in scopes:
+            candidate = aggregates.get(scope, {}).get(group, {})
+            if context_season is not None:
+                candidate = candidate.get(context_season, {})
+                if context_regime is not None:
+                    candidate = candidate.get(context_regime, {})
+            skill = candidate.get(variable, {}).get(str(lead_hours))
+            if skill and _has_sufficient_model_samples(skill, minimum_samples):
+                return {
+                    "source": "_".join(filter(None, (scope, context_season, context_regime))),
+                    "gfs": skill["gfs"],
+                    "gefs": skill["gefs"],
+                    "city": city,
+                    "region": region,
+                    "variable": variable,
+                    "lead_hours": lead_hours,
+                }
+    raise ValueError("No contextual skill bucket has sufficient paired samples")

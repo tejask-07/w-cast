@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ml.spatial.lookup import get_spatial_weights
+from ml.blending.weight_service import get_forecast_weights
 
 
 def spatial_blend(
@@ -14,7 +14,7 @@ def spatial_blend(
     gefs_value: float,
 ) -> dict[str, Any]:
 
-    skill = get_spatial_weights(
+    skill = get_forecast_weights(
         latitude=latitude,
         longitude=longitude,
         variable=variable,

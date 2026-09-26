@@ -6,6 +6,7 @@ from typing import Any
 
 from ml.regimes.classifier import classify_regime
 from ml.regimes.extremes import detect_extremes
+from ml.spatial.location import resolve_location
 from ml.spatial.spatial_blend import spatial_blend
 
 
@@ -27,22 +28,8 @@ FIELDS = {
     "wind_speed": "wind_speed_ms",
 }
 
-CITIES = {
-    "Mumbai": (19.0760, 72.8777),
-    "Delhi": (28.6139, 77.2090),
-    "Kolkata": (22.5726, 88.3639),
-    "Chennai": (13.0827, 80.2707),
-}
-
-
 def _nearest_city(lat: float, lon: float) -> str:
-    return min(
-        CITIES,
-        key=lambda city: (
-            (CITIES[city][0] - lat) ** 2
-            + (CITIES[city][1] - lon) ** 2
-        ),
-    )
+    return resolve_location(lat, lon)["city"]
 
 
 def generate_forecast(
@@ -52,7 +39,7 @@ def generate_forecast(
     variable: str,
     gfs_file_path: str | Path | dict | None = None,
     gefs_file_paths: dict | None = None,
-    history_path: str | Path = "data/processed/india_weight_map_7d.json",
+    history_path: str | Path = "data/processed/india_weight_map_audited_gefs_2026-09-20_to_2026-09-24.json",
 ) -> dict[str, Any]:
 
     if variable not in FIELDS:
