@@ -41,7 +41,6 @@ def generate_forecast(
     variable: str,
     gfs_file_path: str | Path | dict | None = None,
     gefs_file_paths: dict | None = None,
-    history_path: str | Path = "data/processed/india_weight_map_audited_gefs_2026-09-20_to_2026-09-24.json",
 ) -> dict[str, Any]:
 
     if variable not in FIELDS:

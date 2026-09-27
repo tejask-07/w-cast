@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,7 +27,7 @@ from ml.regimes.extremes import detect_extremes
 SUPPORTED_VARIABLES = ("temperature", "rainfall", "wind_speed")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-WEIGHT_MAP_PATH = REPO_ROOT / "data" / "processed" / "india_weight_map_audited_gefs_2026-09-20_to_2026-09-24.json"
+WEIGHT_MAP_PATH = REPO_ROOT / "data" / "processed" / "india_weight_map_7d.json"
 
 
 def resolve_location_name(lat: float, lon: float) -> str | None:
@@ -183,7 +183,6 @@ def generate_forecast(
         raise ValueError("lead_hours must be one of: 24, 48, 72")
 
     location_name = resolve_location_name(lat, lon)
-    history_path = REPO_ROOT / "data" / "processed" / "history_7d_multilead.json"
 
     gfs_paths, gefs_paths = _download_forecast_sources(
         lead_hours
@@ -196,7 +195,6 @@ def generate_forecast(
         variable=_api_variable(variable),
         gfs_file_path=gfs_paths,
         gefs_file_paths=gefs_paths,
-        history_path=history_path,
     )
 
     selected_weights = result["all_weights"][_api_variable(variable)]
