@@ -1,6 +1,11 @@
+/* ================================================= */
+/* LANDING */
+/* ================================================= */
+
 .landing {
   width: 100%;
   min-height: 100svh;
+
   padding: 0 3.5vw;
 
   display: flex;
@@ -8,14 +13,21 @@
 
   background: var(--bg);
   color: var(--ink);
+
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 
-/* ─────────────────────────────
-   HEADER
-───────────────────────────── */
+
+/* ================================================= */
+/* HEADER */
+/* ================================================= */
 
 .landing-header {
+  position: relative;
+
   height: 73px;
+  flex-shrink: 0;
 
   display: flex;
   align-items: center;
@@ -24,95 +36,106 @@
 
   font-family: var(--mono);
   font-size: 14px;
-  letter-spacing: 0.02em;
+
+  letter-spacing: 0.015em;
+
+  z-index: 100;
 }
 
 .brand {
   font-family: var(--display);
-  font-size: 23px;
+
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.055em;
+
+  letter-spacing: -0.065em;
+
+  white-space: nowrap;
 }
 
 .header-divider {
   width: 1px;
   height: 20px;
-  margin: 0 27px;
+
+  margin-left: 28px;
+  margin-right: 25px;
 
   background: var(--line);
 }
 
 .header-meta {
   display: flex;
-  gap: 15px;
+  align-items: center;
+
+  gap: 14px;
 
   white-space: nowrap;
 }
 
-.header-meta span {
+.header-meta b {
+  font-weight: 400;
   color: var(--muted);
 }
 
 .header-right {
   margin-left: auto;
+
   white-space: nowrap;
+
+  font-size: 13px;
 }
 
 
-/* ─────────────────────────────
-   HERO
-───────────────────────────── */
+/* ================================================= */
+/* HERO */
+/* ================================================= */
 
 .landing-hero {
   position: relative;
+
   flex: 1;
+  min-height: 0;
 
-  min-height: calc(100svh - 130px);
+  overflow: visible;
 }
 
 
-/* Left information */
+/* ================================================= */
+/* SIDE META */
+/* ================================================= */
 
-.hero-left-meta {
-  position: absolute;
-  top: 82px;
-  left: 0;
-
-  font-family: var(--mono);
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.hero-left-meta p {
-  margin: 0;
-}
-
-
-/* Right information */
-
+.hero-left-meta,
 .hero-right-meta {
   position: absolute;
-  top: 82px;
-  right: 0;
 
-  width: 110px;
+  top: 84px;
 
   font-family: var(--mono);
   font-size: 14px;
+
   line-height: 1.45;
+
+  z-index: 40;
 }
 
-.hero-right-meta > span:first-child {
-  display: block;
-  margin-bottom: 22px;
+.hero-left-meta {
+  left: 0;
 }
 
+.hero-right-meta {
+  right: 0;
+  width: 110px;
+}
+
+.hero-left-meta p,
 .hero-right-meta p {
   margin: 0;
 }
 
-
-/* Small horizontal marks */
+.meta-index {
+  display: block;
+  margin-bottom: 22px;
+}
 
 .meta-line {
   display: block;
@@ -126,119 +149,247 @@
 }
 
 
-/* ─────────────────────────────
-   MAIN TITLE
-───────────────────────────── */
+/* ================================================= */
+/* DECORATIVE CROSSES */
+/* ================================================= */
 
-.hero-title {
+.hero-cross {
+  position: absolute;
+
+  z-index: 35;
+
+  font-family: Arial, sans-serif;
+
+  font-size: 30px;
+  font-weight: 200;
+
+  line-height: 1;
+
+  pointer-events: none;
+}
+
+.hero-cross-left {
+  left: 25.5%;
+  top: 34%;
+}
+
+.hero-cross-middle {
+  left: 42.5%;
+  top: 61%;
+
+  font-size: 31px;
+}
+
+
+/* ================================================= */
+/* HERO CONTENT */
+/* ================================================= */
+
+/*
+ * The entire content block is slightly higher
+ * than before.
+ *
+ * This keeps the CTA clear of the footer while
+ * preserving the hand/globe composition.
+ */
+
+.hero-content {
   position: absolute;
 
   left: 0;
   right: 0;
-  top: 50%;
 
-  transform: translateY(-36%);
+  top: 55%;
+
+  transform: translateY(-30%);
+
+  z-index: 5;
 }
 
 
-/* LEFORECAST */
-
+/* ================================================= */
+/* WORDMARK */
+/* ================================================= */
 .wordmark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
 
   width: 100%;
+  height: clamp(125px, 11.9vw, 195px);
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 
   font-family: var(--display);
-  font-size: clamp(100px, 11.3vw, 185px);
+
+  font-size: clamp(
+    125px,
+    11.9vw,
+    195px
+  );
+
   font-weight: 400;
-  line-height: 0.82;
-  letter-spacing: -0.075em;
+
+  line-height: 0.76;
+
+  letter-spacing: -0.082em;
 
   white-space: nowrap;
 }
 
-.wordmark > span {
+.wordmark-left,
+.wordmark-right {
   display: block;
+
+  position: relative;
+
+  z-index: 10;
 }
 
+.wordmark-left {
+  /*
+   * LEF ends before the globe.
+   */
+  width: 31.5%;
+  flex-shrink: 0;
+}
 
-/* Globe / O position */
-
+.wordmark-right {
+  /*
+   * RECAST begins after the globe.
+   */
+  margin-left: 0;
+}
+/* ================================================= */
+/* GLOBE / O */
+/* ================================================= */
 .hero-mark {
   position: relative;
 
-  width: clamp(105px, 9.8vw, 170px);
-  height: clamp(105px, 9.8vw, 170px);
+  width: clamp(
+    108px,
+    8.6vw,
+    145px
+  );
 
-  margin: 0 -0.015em;
+  height: clamp(
+    108px,
+    8.6vw,
+    145px
+  );
+
+  /*
+   * Pull the O/globe slightly left so it
+   * visually sits between LEF and RECAST.
+   */
+  margin-left: -74px;
+  margin-right: 36px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
   flex-shrink: 0;
+
+  z-index: 20;
+}
+/* ================================================= */
+/* HAND + GLOBE ARTWORK */
+/* ================================================= */
+
+/*
+ * HAND POSITION — DO NOT TOUCH.
+ *
+ * This is the placement that finally matches
+ * the reference composition.
+ */
+
+.hero-hand-globe {
+  position: absolute;
+
+  width: 350px;
+
+  height: auto;
+
+  max-width: none;
+
+  left: 50%;
+
+  top: -365px;
+
+  transform: translateX(-50%);
+
+  z-index: 60;
+
+  pointer-events: none;
+
+  filter: grayscale(1);
 }
 
-.hero-globe-placeholder {
-  width: 100%;
-  height: 100%;
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-family: var(--mono);
-  font-size: 0.82em;
-  line-height: 1;
-
-  color: var(--ink);
-}
-
-
-/* Subtitle */
+/* ================================================= */
+/* SUBTITLE */
+/* ================================================= */
 
 .hero-subtitle {
-  margin-top: 28px;
+  margin-top: 25px;
   margin-left: 4px;
 
   font-family: var(--display);
-  font-size: clamp(30px, 3.1vw, 52px);
+
+  /*
+   * Slightly smaller than the previous version.
+   */
+
+  font-size: clamp(
+    27px,
+    2.75vw,
+    44px
+  );
+
   font-weight: 400;
-  line-height: 1.08;
+
+  line-height: 1.06;
+
   letter-spacing: -0.045em;
 }
 
 
-/* Description */
+/* ================================================= */
+/* DESCRIPTION */
+/* ================================================= */
 
 .hero-description {
-  margin: 27px 0 0 5px;
+  margin: 23px 0 0 5px;
+
+  max-width: 650px;
 
   font-family: var(--mono);
-  font-size: 14px;
-  line-height: 1.65;
 
-  max-width: 670px;
+  font-size: 13px;
+
+  line-height: 1.58;
+
+  letter-spacing: 0;
 }
 
-
-/* ─────────────────────────────
-   CTA
-───────────────────────────── */
+/* ================================================= */
+/* CTA */
+/* ================================================= */
 
 .explore-button {
-  margin-top: 43px;
-  margin-left: 5px;
-
   width: 400px;
   height: 69px;
+
+  margin-top: 20px;
+  margin-left: 5px;
+
+  padding: 0;
 
   display: flex;
   align-items: center;
 
-  padding: 0;
+  border: 0;
 
   background: var(--ink);
   color: var(--bg);
@@ -246,16 +397,22 @@
   cursor: pointer;
 
   font-family: var(--mono);
+
   font-size: 16px;
+
   letter-spacing: 0.01em;
 
-  transition:
-    background 180ms ease,
-    transform 180ms ease;
+  transition: transform 160ms ease;
+
+  /*
+   * Keep the button comfortably above
+   * the footer line.
+   */
+  transform: translateY(-10px);
 }
 
 .explore-button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-12px);
 }
 
 .button-arrow {
@@ -268,49 +425,93 @@
 
   border-right: 1px solid #555;
 
-  font-size: 30px;
   font-family: Arial, sans-serif;
+
+  font-size: 31px;
   font-weight: 300;
 }
 
-.explore-button > span:last-child {
+.button-label {
   padding-left: 27px;
 }
 
-
-/* ─────────────────────────────
-   COORDINATES
-───────────────────────────── */
+/* ================================================= */
+/* COORDINATES */
+/* ================================================= */
 
 .hero-coordinates {
   position: absolute;
 
   right: 0;
-  bottom: 105px;
+  bottom: 102px;
 
   display: flex;
   align-items: flex-start;
+
   gap: 20px;
 
+  z-index: 40;
+
   font-family: var(--mono);
+
   font-size: 14px;
+
   line-height: 1.55;
 }
 
-.coordinate-cross {
-  font-family: Arial, sans-serif;
-  font-size: 27px;
-  font-weight: 200;
-  line-height: 0.7;
+.coordinate-marker {
+  position: relative;
+
+  width: 30px;
+  height: 30px;
+
+  margin-top: 1px;
+}
+
+.coordinate-horizontal,
+.coordinate-vertical {
+  position: absolute;
+
+  display: block;
+
+  background: var(--ink);
+}
+
+.coordinate-horizontal {
+  left: 0;
+  right: 0;
+
+  top: 50%;
+
+  height: 1px;
+}
+
+.coordinate-vertical {
+  top: 0;
+  bottom: 0;
+
+  left: 50%;
+
+  width: 1px;
+}
+
+.coordinate-values {
+  display: flex;
+  flex-direction: column;
+}
+
+.coordinate-values .meta-line {
+  margin-top: 14px;
 }
 
 
-/* ─────────────────────────────
-   FOOTER
-───────────────────────────── */
+/* ================================================= */
+/* FOOTER */
+/* ================================================= */
 
 .landing-footer {
   height: 58px;
+  flex-shrink: 0;
 
   display: flex;
   align-items: center;
@@ -319,28 +520,68 @@
   border-top: 1px solid var(--line);
 
   font-family: var(--mono);
+
   font-size: 13px;
+
   letter-spacing: 0.015em;
+
+  z-index: 100;
 }
 
-.landing-footer span:last-child {
+.footer-right {
   display: flex;
+
   gap: 17px;
 }
 
 .landing-footer b {
   font-weight: 400;
+
   color: var(--muted);
 }
 
 
-/* ─────────────────────────────
-   RESPONSIVE
-───────────────────────────── */
+/* ================================================= */
+/* LARGE LAPTOP / SMALL DESKTOP */
+/* ================================================= */
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
+
+  .wordmark {
+    font-size: 12.8vw;
+  }
+
+  .hero-mark {
+    width: 9.2vw;
+    height: 9.2vw;
+  }
+
+  .hero-hand-globe {
+    width: 315px;
+    top: -325px;
+  }
+
+  .hero-subtitle {
+    font-size: 3.1vw;
+  }
+
+  .hero-description {
+    font-size: 12px;
+  }
+
+}
+
+
+/* ================================================= */
+/* TABLET */
+/* ================================================= */
+
+@media (max-width: 800px) {
+
   .landing {
     padding: 0 24px;
+
+    overflow-y: auto;
   }
 
   .header-right {
@@ -352,13 +593,114 @@
     display: none;
   }
 
-  .wordmark {
-    justify-content: flex-start;
-    font-size: clamp(68px, 12vw, 110px);
+  .hero-content {
+    top: 48%;
+
+    transform: translateY(-20%);
   }
 
-  .hero-title {
+  .wordmark {
+    justify-content: flex-start;
+
+    font-size: 12vw;
+
+    line-height: 0.78;
+  }
+
+  .hero-mark {
+    width: 11vw;
+    height: 11vw;
+  }
+
+  .hero-hand-globe {
+    width: 210px;
+    top: -190px;
+  }
+
+  .hero-subtitle {
+    margin-top: 25px;
+
+    font-size: 5vw;
+  }
+
+  .hero-description {
+    max-width: 600px;
+  }
+
+  .hero-coordinates {
+    bottom: 60px;
+  }
+
+  .hero-cross {
+    display: none;
+  }
+
+}
+
+
+/* ================================================= */
+/* MOBILE */
+/* ================================================= */
+
+@media (max-width: 600px) {
+
+  .landing {
+    padding: 0 18px;
+  }
+
+  .landing-header {
+    height: 60px;
+
+    font-size: 10px;
+  }
+
+  .brand {
+    font-size: 19px;
+  }
+
+  .header-divider {
+    margin-left: 17px;
+    margin-right: 15px;
+  }
+
+  .header-meta {
+    display: none;
+  }
+
+  .hero-content {
     top: 45%;
+
+    transform: translateY(-18%);
+  }
+
+  .wordmark {
+    font-size: 18vw;
+
+    letter-spacing: -0.085em;
+  }
+
+  .hero-mark {
+    width: 18vw;
+    height: 18vw;
+  }
+
+  .hero-hand-globe {
+    width: 155px;
+    top: -140px;
+  }
+
+  .hero-subtitle {
+    margin-top: 23px;
+
+    font-size: 9vw;
+  }
+
+  .hero-description {
+    margin-top: 20px;
+
+    font-size: 11px;
+
+    line-height: 1.6;
   }
 
   .hero-description br {
@@ -368,40 +710,14 @@
   .explore-button {
     width: 100%;
     max-width: 400px;
-  }
-}
 
+    height: 61px;
 
-@media (max-width: 600px) {
-  .landing-header {
-    height: 60px;
+    margin-top: 30px;
   }
 
-  .header-meta {
-    display: none;
-  }
-
-  .brand {
-    font-size: 20px;
-  }
-
-  .hero-title {
-    top: 43%;
-    transform: translateY(-25%);
-  }
-
-  .wordmark {
-    font-size: 19vw;
-  }
-
-  .hero-subtitle {
-    margin-top: 24px;
-    font-size: 10vw;
-  }
-
-  .hero-description {
-    font-size: 12px;
-    line-height: 1.6;
+  .button-arrow {
+    width: 68px;
   }
 
   .hero-coordinates {
@@ -409,14 +725,15 @@
   }
 
   .landing-footer {
-    font-size: 10px;
+    height: 52px;
+
+    justify-content: flex-end;
+
+    font-size: 9px;
   }
 
-  .landing-footer span:first-child {
+  .landing-footer > span:first-child {
     display: none;
   }
 
-  .landing-footer {
-    justify-content: flex-end;
-  }
 }
