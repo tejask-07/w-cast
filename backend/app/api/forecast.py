@@ -5,6 +5,7 @@ from app.schemas.forecast import (
     ForecastResponse,
     HourlyForecastResponse,
     SpatialForecastResponse,
+    SpatialRiskResponse,
     WeightSummaryResponse,
 )
 from app.services.forecast_service import (
@@ -18,12 +19,39 @@ from app.services.spatial_forecast_service import (
     get_cached_map_path,
     validate_spatial_request,
 )
+from app.services.risk_service import generate_spatial_risk_grid
 from app.services.hourly_forecast_service import (
     generate_hourly_forecast,
     validate_hourly_request,
 )
 
 router = APIRouter(prefix="/api")
+
+
+@router.get("/forecast/risk-map", response_model=SpatialRiskResponse)
+def get_forecast_risk_map(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    lead_hours: int = Query(...),
+    south: float | None = Query(None, ge=-90, le=90),
+    north: float | None = Query(None, ge=-90, le=90),
+    west: float | None = Query(None, ge=-180, le=180),
+    east: float | None = Query(None, ge=-180, le=180),
+):
+    try:
+        return generate_spatial_risk_grid(
+            latitude=lat,
+            longitude=lon,
+            lead_hours=lead_hours,
+            south=south,
+            north=north,
+            west=west,
+            east=east,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - service boundary failsafe
+        raise HTTPException(status_code=503, detail="Spatial risk unavailable") from exc
 
 
 @router.get("/forecast", response_model=ForecastResponse)

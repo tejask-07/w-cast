@@ -14,8 +14,14 @@ import 'leaflet/dist/leaflet.css'
 import './Results.css'
 
 import ForecastMap from '../components/map/ForecastMap'
+import RiskMapLayer from '../components/map/RiskMapLayer'
+import { getSpatialRisk } from '../services/api'
 import { useForecast } from '../hooks/useForecast'
-import type { ForecastResponse, ForecastVariable } from '../types/forecast'
+import type {
+  ForecastResponse,
+  ForecastVariable,
+  SpatialRiskResponse,
+} from '../types/forecast'
 
 type AOI = {
   north: number
@@ -37,6 +43,14 @@ type ForecastRequest = {
 }
 
 type SeriesPoint = { hour: number; value: number | null }
+type VisualizationMode = ForecastVariable | 'risk_map'
+
+const visualizationModes: { id: VisualizationMode; label: string }[] = [
+  { id: 'temperature', label: 'TEMPERATURE' },
+  { id: 'wind_speed', label: 'WIND' },
+  { id: 'rainfall', label: 'PRECIPITATION' },
+  { id: 'risk_map', label: 'RISK MAP' },
+]
 
 const hourlyMetricConfig: Record<ForecastVariable, {
   label: string
@@ -95,6 +109,9 @@ function Results() {
 
   const request =
     location.state as ForecastRequest | null
+  const riskRequestKey = request
+    ? `${request.location.lat}:${request.location.lon}:${request.lead_hours}:${request.aoi?.south}:${request.aoi?.north}:${request.aoi?.west}:${request.aoi?.east}`
+    : ''
 
   const {
     hourlyData,
@@ -106,6 +123,13 @@ function Results() {
 
   const [selectedHourlyMetric, setSelectedHourlyMetric] =
     useState<ForecastVariable>('temperature')
+  const [selectedVisualization, setSelectedVisualization] =
+    useState<VisualizationMode>('temperature')
+  const [riskResult, setRiskResult] = useState<{
+    key: string
+    data: SpatialRiskResponse | null
+    error: boolean
+  }>({ key: '', data: null, error: false })
 
   useEffect(() => {
     if (!request?.forecast) return
@@ -127,6 +151,36 @@ function Results() {
     request?.location.lat,
     request?.location.lon,
     request?.variable,
+  ])
+
+  useEffect(() => {
+    if (!request?.forecast || selectedVisualization !== 'risk_map') return
+
+    let active = true
+    void getSpatialRisk({
+      lat: request.location.lat,
+      lon: request.location.lon,
+      lead_hours: request.lead_hours,
+      ...request.aoi,
+    })
+      .then((data) => {
+        if (active) setRiskResult({ key: riskRequestKey, data, error: false })
+      })
+      .catch(() => {
+        if (active) setRiskResult({ key: riskRequestKey, data: null, error: true })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [
+    request?.aoi,
+    request?.forecast,
+    request?.lead_hours,
+    request?.location.lat,
+    request?.location.lon,
+    riskRequestKey,
+    selectedVisualization,
   ])
 
   /*
@@ -190,6 +244,15 @@ function Results() {
   const selectedHourlyData = hourlyDataByVariable[selectedHourlyMetric]
     ?? (hourlyData?.variable === selectedHourlyMetric ? hourlyData : undefined)
   const selectedUnit = selectedHourlyData?.unit ?? selectedMetric.unit
+  const spatialVariable: ForecastVariable = selectedVisualization === 'risk_map'
+    ? 'temperature'
+    : selectedVisualization
+  const currentRiskResult = riskResult.key === riskRequestKey ? riskResult : null
+  const riskData = currentRiskResult?.data ?? null
+  const riskLoading = selectedVisualization === 'risk_map'
+    && !currentRiskResult
+  const riskError = selectedVisualization === 'risk_map'
+    && currentRiskResult?.error === true
   const variableLabel = request.variable === 'wind_speed'
     ? 'WIND SPEED'
     : request.variable.toUpperCase()
@@ -367,6 +430,26 @@ function Results() {
 
             <section className="results-map-card">
 
+              <div className="visualization-section">
+                <div className="visualization-heading">
+                  <strong>AREA VISUALIZATION</strong>
+                  <div className="visualization-selector" role="tablist" aria-label="Spatial map visualization">
+                    {visualizationModes.map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        className={selectedVisualization === mode.id ? 'active' : ''}
+                        role="tab"
+                        aria-selected={selectedVisualization === mode.id}
+                        onClick={() => setSelectedVisualization(mode.id)}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="results-map-header">
 
                 <span>
@@ -387,12 +470,38 @@ function Results() {
                   longitude={request.location.lon}
                   city={request.location.name}
                   leadHours={request.lead_hours}
-                  variable={request.variable}
+                  variable={spatialVariable}
                   aoi={request.aoi ?? undefined}
+                  showForecastOverlay={selectedVisualization !== 'risk_map'}
                   initialZoom={9}
                   showChrome={false}
                   satellite
-                />
+                >
+                  {selectedVisualization === 'risk_map' && riskData && (
+                    <RiskMapLayer cells={riskData.cells} />
+                  )}
+                </ForecastMap>
+
+                {selectedVisualization === 'risk_map' && riskLoading && (
+                  <div className="risk-map-state" role="status">LOADING AOI RISK GRID</div>
+                )}
+
+                {selectedVisualization === 'risk_map' && riskError && (
+                  <div className="risk-map-state" role="alert">RISK GRID UNAVAILABLE</div>
+                )}
+
+                {selectedVisualization === 'risk_map' && riskData && (
+                  <>
+                    <div className="risk-map-legend" aria-label="Risk score legend">
+                      <strong>W-CAST WEATHER RISK INDICATOR</strong>
+                      <div><i className="risk-low" /><span>LOW</span><b>0-30</b></div>
+                      <div><i className="risk-moderate" /><span>MODERATE</span><b>31-60</b></div>
+                      <div><i className="risk-high" /><span>HIGH</span><b>61-80</b></div>
+                      <div><i className="risk-very-high" /><span>VERY HIGH</span><b>81-100</b></div>
+                    </div>
+                    <div className="risk-map-disclaimer">NOT A VALIDATED HAZARD PROBABILITY</div>
+                  </>
+                )}
 
                 <div className="results-map-label">
 

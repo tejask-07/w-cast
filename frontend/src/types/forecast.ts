@@ -71,6 +71,31 @@ export type SpatialForecastResponse = {
 	unit: string
 }
 
+export type SpatialRiskCell = {
+	south: number
+	north: number
+	west: number
+	east: number
+	temperature: number
+	rainfall: number
+	wind_speed: number
+	risk_score: number
+	confidence: number
+}
+
+export type SpatialRiskQuery = {
+	lat: number
+	lon: number
+	lead_hours: number
+} & Partial<ForecastAOI>
+
+export type SpatialRiskResponse = {
+	lead_hours: number
+	bounds: [[number, number], [number, number]]
+	cells: SpatialRiskCell[]
+	indicator: string
+}
+
 export type HourlyForecastPoint = {
 	hour: number
 	value: number

@@ -9,6 +9,7 @@ import {
 } from 'react-leaflet'
 import type { LatLngBoundsExpression } from 'leaflet'
 import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 import 'leaflet/dist/leaflet.css'
 import './ForecastMap.css'
 
@@ -28,6 +29,8 @@ type ForecastMapProps = {
   variable?: ForecastVariable
   overlay?: SpatialForecastResponse | null
   aoi?: ForecastAOI
+  showForecastOverlay?: boolean
+  children?: ReactNode
   initialZoom?: number
   showChrome?: boolean
   satellite?: boolean
@@ -58,6 +61,8 @@ function ForecastMap({
   leadHours,
   variable = 'temperature',
   overlay = null,
+  showForecastOverlay = true,
+  children,
   aoi,
   initialZoom = 5,
   showChrome = true,
@@ -71,7 +76,7 @@ function ForecastMap({
   } = useForecast()
 
   useEffect(() => {
-    if (leadHours === undefined) return
+    if (leadHours === undefined || !showForecastOverlay) return
 
     void fetchForecastMap({
       lat: latitude,
@@ -80,9 +85,11 @@ function ForecastMap({
       variable,
       ...aoi,
     }).catch(() => undefined)
-  }, [aoi, fetchForecastMap, latitude, longitude, leadHours, variable])
+  }, [aoi, fetchForecastMap, latitude, longitude, leadHours, showForecastOverlay, variable])
 
-  const spatialOverlay = leadHours === undefined ? overlay : mapData
+  const spatialOverlay = showForecastOverlay
+    ? leadHours === undefined ? overlay : mapData
+    : null
   const overlayBounds: LatLngBoundsExpression | undefined = spatialOverlay?.bounds
   const overlayUrl = spatialOverlay ? getApiUrl(spatialOverlay.image_url) : undefined
   const legendVariable = spatialOverlay?.variable ?? variable
@@ -120,6 +127,7 @@ function ForecastMap({
             interactive={false}
           />
         )}
+        {children}
 
         {aoiBounds && (
           <Rectangle
@@ -182,11 +190,11 @@ function ForecastMap({
         </>
       )}
 
-      {mapLoading && (
+      {showForecastOverlay && mapLoading && (
         <div className="forecast-map-status">LOADING SPATIAL FIELD</div>
       )}
 
-      {mapError && (
+      {showForecastOverlay && mapError && (
         <div className="forecast-map-status">SPATIAL FIELD UNAVAILABLE</div>
       )}
 

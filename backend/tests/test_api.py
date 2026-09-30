@@ -410,6 +410,59 @@ def test_forecast_map_rejects_invalid_lead_time():
     assert response.status_code == 400
 
 
+def test_forecast_risk_map_preserves_requested_aoi(monkeypatch):
+    from app.api import forecast as forecast_api
+
+    called = {}
+
+    def fake_generate_risk_grid(**kwargs):
+        called.update(kwargs)
+        return {
+            "lead_hours": kwargs["lead_hours"],
+            "bounds": [[kwargs["south"], kwargs["west"]], [kwargs["north"], kwargs["east"]]],
+            "cells": [{
+                "south": kwargs["south"],
+                "north": kwargs["north"],
+                "west": kwargs["west"],
+                "east": kwargs["east"],
+                "temperature": 29.0,
+                "rainfall": 12.0,
+                "wind_speed": 8.0,
+                "risk_score": 42.0,
+                "confidence": 86.0,
+            }],
+            "indicator": "W-CAST weather risk indicator.",
+        }
+
+    monkeypatch.setattr(
+        forecast_api,
+        "generate_spatial_risk_grid",
+        fake_generate_risk_grid,
+    )
+
+    response = client.get(
+        "/api/forecast/risk-map",
+        params={
+            "lat": 19.2,
+            "lon": 72.8,
+            "lead_hours": 24,
+            "south": 18.9,
+            "north": 19.5,
+            "west": 72.5,
+            "east": 73.1,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert called["south"] == 18.9
+    assert called["north"] == 19.5
+    assert called["west"] == 72.5
+    assert called["east"] == 73.1
+    assert data["bounds"] == [[18.9, 72.5], [19.5, 73.1]]
+    assert data["cells"][0]["risk_score"] == 42.0
+
+
 def test_hourly_forecast_endpoint_returns_real_series_contract(monkeypatch):
     from app.api import forecast as forecast_api
 

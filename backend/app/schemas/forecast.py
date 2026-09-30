@@ -85,6 +85,29 @@ class SpatialForecastResponse(BaseModel):
     unit: str
 
 
+class SpatialRiskCell(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    south: float
+    north: float
+    west: float
+    east: float
+    temperature: float
+    rainfall: float
+    wind_speed: float
+    risk_score: float = Field(..., ge=0, le=100)
+    confidence: float = Field(..., ge=0, le=100)
+
+
+class SpatialRiskResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lead_hours: int = Field(..., gt=0)
+    bounds: list[list[float]]
+    cells: list[SpatialRiskCell]
+    indicator: str
+
+
 class HourlyForecastPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

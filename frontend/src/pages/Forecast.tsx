@@ -365,11 +365,6 @@ function Forecast() {
   ] = useState(false)
 
   const [
-    variable,
-    setVariable,
-  ] = useState<ForecastVariable>('temperature')
-
-  const [
     leadTime,
     setLeadTime,
   ] = useState(24)
@@ -539,6 +534,7 @@ function Forecast() {
     if (!forecastLocation) return
 
     try {
+      const variable: ForecastVariable = 'temperature'
       const forecast = await fetchForecast({
         lat: forecastLocation.lat,
         lon: forecastLocation.lon,
@@ -796,37 +792,6 @@ function Forecast() {
 
               </div>
             )}
-
-          </section>
-
-          {/* WEATHER VARIABLE */}
-
-          <section className="parameter">
-
-            <div className="parameter-label">
-              WEATHER VARIABLE
-            </div>
-
-            <select
-              value={variable}
-              onChange={(event) =>
-                setVariable(
-                  event.target.value as ForecastVariable,
-                )
-              }
-            >
-              <option value="temperature">
-                Temperature
-              </option>
-
-              <option value="rainfall">
-                Rainfall
-              </option>
-
-              <option value="wind_speed">
-                Wind Speed
-              </option>
-            </select>
 
           </section>
 

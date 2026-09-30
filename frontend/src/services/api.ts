@@ -5,6 +5,8 @@ import type {
 	HourlyForecastResponse,
 	SpatialForecastQuery,
 	SpatialForecastResponse,
+	SpatialRiskQuery,
+	SpatialRiskResponse,
 	WeightResponse,
 } from '../types/forecast'
 import type { VerificationResponse } from '../types/verification'
@@ -80,6 +82,18 @@ function isSpatialForecastResponse(value: unknown): value is SpatialForecastResp
 		&& isNumber(bound[0]) && isNumber(bound[1]))
 }
 
+function isSpatialRiskResponse(value: unknown): value is SpatialRiskResponse {
+	if (!isRecord(value) || !isNumber(value.lead_hours) || !Array.isArray(value.bounds)
+		|| value.bounds.length !== 2 || !Array.isArray(value.cells)
+		|| typeof value.indicator !== 'string') return false
+	const validBounds = value.bounds.every((bound) => Array.isArray(bound)
+		&& bound.length === 2 && bound.every(isNumber))
+	const validCells = value.cells.every((cell) => isRecord(cell)
+		&& ['south', 'north', 'west', 'east', 'temperature', 'rainfall', 'wind_speed', 'risk_score', 'confidence']
+			.every((key) => isNumber(cell[key])))
+	return validBounds && validCells
+}
+
 function isHourlyForecastResponse(value: unknown): value is HourlyForecastResponse {
 	if (!isRecord(value) || typeof value.variable !== 'string' || !isNumber(value.lead_hours)
 		|| typeof value.unit !== 'string' || !Array.isArray(value.points)) return false
@@ -131,6 +145,10 @@ export function getVerification(params: ForecastQuery): Promise<VerificationResp
 
 export function getForecastMap(params: SpatialForecastQuery): Promise<SpatialForecastResponse> {
 	return request(`/api/forecast/map?${query(params)}`, isSpatialForecastResponse)
+}
+
+export function getSpatialRisk(params: SpatialRiskQuery): Promise<SpatialRiskResponse> {
+	return request(`/api/forecast/risk-map?${query(params)}`, isSpatialRiskResponse)
 }
 
 export function getApiUrl(path: string): string {
